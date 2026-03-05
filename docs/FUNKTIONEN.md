@@ -1,8 +1,8 @@
 # Nesk3 – Vollständige Funktionsübersicht
 
-**Stand:** 26.02.2026 – v2.9.4  
+**Stand:** 05.03.2026 – v3.1.1  
 **App:** Nesk3 – DRK Erste-Hilfe-Station Flughafen Köln/Bonn  
-**Zweck:** Dienstplan-Verwaltung, Stärkemeldung, Sonderaufgaben, Übergabe, Code-19
+**Zweck:** Dienstplan-Verwaltung, Stärkemeldung, Mitarbeiterdokumente, Einsatzprotokoll, Verspätungs-Meldungen, Übergabe, Code-19
 
 ---
 
@@ -18,12 +18,14 @@
 8. [Fahrzeuge](#8-fahrzeuge)
 9. [Code 19](#9-code-19)
 10. [Mitarbeiter](#10-mitarbeiter)
-11. [Einstellungen](#11-einstellungen)
-12. [Checklisten](#12-checklisten)
-13. [Datenbank (SQLite)](#13-datenbank-sqlite)
-14. [Functions-Module](#14-functions-module)
-15. [Backup-System](#15-backup-system)
-16. [Konfiguration (config.py)](#16-konfiguration-configpy)
+11. [Dienstliches (Einsatzprotokoll)](#11-dienstliches-einsatzprotokoll)
+12. [Mitarbeiterdokumente / Stellungnahmen / Verspätung](#12-mitarbeiterdokumente--stellungnahmen--verspätung)
+13. [Einstellungen](#13-einstellungen)
+14. [Checklisten / Backup / Ma. Ausdrucke](#14-checklisten--backup--ma-ausdrucke)
+15. [Datenbanken (SQLite)](#15-datenbanken-sqlite)
+16. [Functions-Module](#16-functions-module)
+17. [HilfeDialog](#17-hilfedialog)
+18. [Konfiguration (config.py)](#18-konfiguration-configpy)
 
 ---
 
@@ -39,16 +41,19 @@
   | Icon | Label | Seite |
   |------|-------|-------|
   | 🏠 | Dashboard | 0 |
-  | 📅 | Dienstplan | 1 |
-  | 📋 | Aufgaben Nacht | 2 |
-  | 📋 | Aufgaben Tag | 3 |
-  | 🔧 | Sonderaufgaben | 4 |
-  | 📝 | Übergabe | 5 |
-  | 🚗 | Fahrzeuge | 6 |
-  | 🕐 | Code 19 | 7 |
-  | 👥 | Mitarbeiter | 8 |
-  | ⚙️ | Einstellungen | 9 |
-- `QStackedWidget` als Hauptbereich
+  | � | Mitarbeiter | 1 |
+  | ☕️ | Dienstliches | 2 |
+  | ☀️ | Aufgaben Tag | 3 |
+  | 🌙 | Aufgaben Nacht | 4 |
+  | 📅 | Dienstplan | 5 |
+  | 📋 | Übergabe | 6 |
+  | 🚗 | Fahrzeuge | 7 |
+  | 🕐 | Code 19 | 8 |
+  | 🖨️ | Ma. Ausdrucke | 9 |
+  | 🤒 | Krankmeldungen | 10 |
+  | 💾 | Backup | 11 |
+  | ⚙️ | Einstellungen | 12 |
+- `QStackedWidget` als Hauptbereich (13 Seiten)
 - Automatisches Laden beim Start: Dienstplan-Status aus DB
 
 ---
@@ -216,7 +221,60 @@ Kernfunktionen:
 
 ---
 
-## 11. Einstellungen
+## 11. Dienstliches (Einsatzprotokoll)
+
+### `gui/dienstliches.py` – `DienstlichesWidget(QWidget)`
+2 Tabs:
+- **📋 Einsatzprotokoll**: Neues Einsatz-/Veranstaltungsprotokoll erfassen
+  - Felder: Datum, Uhrzeit, Einsatzart, Anlass, Einsatzleiter, Kräfte, Beschreibung
+  - Speichern in `einsaetze.db` (WAL)
+  - Excel-Export pro Einsatz in `Daten/Einsatz/Protokolle/`
+- **📊 Übersicht**: Alle gespeicherten Einsätze tabellarisch, filterbar
+  - Rechtsklick-Menü: Bearbeiten, Löschen, Excel öffnen
+
+**Datenbank:** `database SQL/einsaetze.db` (WAL, busy_timeout=5000)  
+**Zugriff:** direkt in `gui/dienstliches.py` via `_ensured_db()` / `_db()` Context-Manager
+
+---
+
+## 12. Mitarbeiterdokumente / Stellungnahmen / Verspätung
+
+### `gui/mitarbeiter_dokumente.py` – `MitarbeiterDokumenteWidget(QWidget)`
+3 Tabs:
+
+**Tab 1 – Mitarbeiterdokumente / Ausdrucke:**
+- Ordner-Browser für `Daten/Mitarbeiterdokumente/` (kategorisiert)
+- Direktes Öffnen von `.docx`, `.pdf`, `.xlsx` per Doppelklick
+- Neue Dokumente aus Word-Vorlage erstellen (DRK-Briefkopf)
+
+**Tab 2 – Stellungnahmen (Passagierbeschwerden):**
+- Liste aller Stellungnahmen aus `stellungnahmen.db`
+- Spalten: Datum, Mitarbeiter, Art, Flugnummer, Status
+- Neue Stellungnahme via Formular: Mitarbeiter, Art, Flugnummer, Freitext, Anhänge
+- Status-Verlauf: offen → in Bearbeitung → abgeschlossen
+- Word-Vorlage automatisch ausfüllen + speichern
+- Rechtsklick: Bearbeiten, Status ändern, Dokument öffnen, Löschen
+- HTML-Export (`WebNesk/stellungnahmen_lokal.html`)
+
+**Tab 3 – Verspätungs-Meldungen:**
+- Liste aller Meldungen aus `verspaetungen.db`
+- Spalten: Datum, Mitarbeiter, Minuten, Art, Status
+- Neue Meldung: Name, Datum, Verspätungsminuten, Beschreibung
+- Word-Vorlage `FO_CGN_27` automatisch ausfüllen
+
+**Zugehörige Functions-Module:**
+
+| Datei | Funktion |
+|---|---|
+| `functions/stellungnahmen_db.py` | CRUD für Stellungnahmen-DB (WAL) |
+| `functions/stellungnahmen_html_export.py` | HTML-Ansicht generieren |
+| `functions/verspaetung_db.py` | CRUD für Verspätungs-DB (WAL, `_connect()`-Helfer) |
+| `functions/archiv_functions.py` | Archivierung abgeschlossener Protokolle (WAL) |
+| `functions/mitarbeiter_dokumente_functions.py` | Kategorien, Dateipfade, Vorlagen-Handling |
+
+---
+
+## 13. Einstellungen
 
 ### `gui/einstellungen.py` – `EinstellungenWidget(QWidget)`
 Gruppen:
@@ -240,20 +298,47 @@ E-Mobby-Verwaltung:
 
 ---
 
-## 12. Checklisten
+## 14. Checklisten / Backup / Ma. Ausdrucke
 
 ### `gui/checklisten.py` – `ChecklistenWidget(QWidget)`
 - Vordefinierte und benutzerdefinierte Checklisten
 - Abhaken mit Zeitstempel
 - Tages-Reset
 
+### Nav-Seite „Ma. Ausdrucke" (Index 9)
+- Öffnet direkt den Ordner `Daten/Vordrucke/` im Explorer
+
+### Nav-Seite „Krankmeldungen" (Index 10)
+- Öffnet Ordner `Daten/Krankmeldungen/` oder zeigt Dokument-Browser
+
+### Nav-Seite „Backup" (Index 11)
+- ZIP-Backup erstellen (via `backup_manager.py`): `Backup Data/Nesk3_backup_YYYYMMDD_HHMMSS.zip`
+- Backup-Liste anzeigen, Restore anstoßen
+- **Ausgeschlossen**: `Backup Data/`, `build_tmp/`, `Exe/`, `__pycache__/` → Größe ~8 MB
+
 ---
 
-## 13. Datenbank (SQLite)
+## 15. Datenbanken (SQLite)
 
-**Datei:** `database SQL/nesk3.db`
+Alle 5 SQLite-Datenbanken liegen seit **05.03.2026** zentral in `database SQL/`.
 
-### Tabellen
+| Datei | Beschreibung | WAL | Zugriff über |
+|---|---|---|---|
+| `nesk3.db` | Hauptdatenbank (Dienstplan, Mitarbeiter, Fahrzeuge, Übergabe, …) | ✅ | `database/connection.py` |
+| `archiv.db` | Archivierte Protokolle | ✅ | `functions/archiv_functions.py` |
+| `stellungnahmen.db` | Passagierbeschwerde-Stellungnahmen | ✅ | `functions/stellungnahmen_db.py` |
+| `einsaetze.db` | Einsatzprotokoll FKB (Dienstliches) | ✅ | `gui/dienstliches.py` |
+| `verspaetungen.db` | Verspätungs-Meldungen | ✅ | `functions/verspaetung_db.py` |
+
+**WAL-Konfiguration** (alle DBs):
+```python
+PRAGMA journal_mode = WAL
+PRAGMA synchronous  = NORMAL
+PRAGMA busy_timeout  = 5000   # 5 Sekunden
+sqlite3.connect(pfad, timeout=5)
+```
+
+**Tabellen in `nesk3.db`:**
 | Tabelle | Inhalt |
 |---------|--------|
 | `mitarbeiter` | Mitarbeiterstammdaten |
@@ -265,7 +350,7 @@ E-Mobby-Verwaltung:
 | `sonderaufgaben` | Gespeicherte Sonderaufgaben |
 
 ### `database/connection.py`
-- `get_connection()`: SQLite-Verbindung mit `check_same_thread=False`
+- `get_connection()`: SQLite-Verbindung mit WAL + `check_same_thread=False`
 
 ### `database/migrations.py`
 - `run_migrations()`: Erstellt fehlende Tabellen und Spalten (wird bei App-Start ausgeführt)
@@ -275,29 +360,25 @@ E-Mobby-Verwaltung:
 
 ---
 
-## 14. Functions-Module
+## 16. Functions-Module
 
 | Datei | Hauptfunktionen |
-|-------|-----------------|
+|-------|----------------|
+| `archiv_functions.py` | Archivierung abgeschlossener Protokolle (WAL) |
+| `dienstplan_html_export.py` | Statische HTML-Ansicht des Dienstplans generieren |
 | `dienstplan_parser.py` | Excel parsen, Krank-Typen, Abschnitt-Erkennung |
 | `dienstplan_functions.py` | DB CRUD für Dienstplan |
 | `emobby_functions.py` | E-Mobby-Fahrerliste (TXT↔DB-Sync, Matching) |
 | `fahrzeug_functions.py` | DB CRUD für Fahrzeuge |
 | `mail_functions.py` | Outlook-COM-Integration, Mail verschicken |
+| `mitarbeiter_dokumente_functions.py` | Kategorien, Dateipfade, Vorlagen-Handling |
 | `mitarbeiter_functions.py` | DB CRUD für Mitarbeiter |
 | `settings_functions.py` | Key-Value-Einstellungen aus DB |
 | `staerkemeldung_export.py` | Word-Dokument-Export (.docx) |
+| `stellungnahmen_db.py` | CRUD für Stellungnahmen-DB (WAL) |
+| `stellungnahmen_html_export.py` | HTML-Ansicht Stellungnahmen generieren |
 | `uebergabe_functions.py` | DB CRUD für Übergabe-Protokolle |
-
----
-
-## 15. Backup-System
-
-### `backup/backup_manager.py`
-- `create_zip_backup()`: ZIP des Nesk3-Ordners unter `Backup Data/Nesk3_backup_YYYYMMDD_HHMMSS.zip`
-- `list_zip_backups()`: Alle ZIP-Backups auflisten
-- `restore_from_zip(zip_path)`: Dateien aus ZIP zurückspielen
-- **Ausgeschlossen**: `Backup Data/`, `build_tmp/`, `Exe/`, `__pycache__/` → Größe ~8 MB
+| `verspaetung_db.py` | CRUD für Verspätungs-DB (WAL, `_connect()`-Helfer) |
 
 ---
 
@@ -321,7 +402,7 @@ Animationen:
 
 ---
 
-## 17. Konfiguration (`config.py`)
+## 18. Konfiguration (`config.py`)
 
 ```python
 BASE_DIR    # Absoluter Pfad zu Nesk3/
