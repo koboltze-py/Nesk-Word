@@ -1610,7 +1610,10 @@ class MitarbeiterDokumenteWidget(QWidget):
             anzahl = len(self._dokumente.get(kat, []))
             item = self._kat_list.item(row)
             if item:
-                item.setText(f"📁  {kat}  ({anzahl})")
+                if kat == "Verspätung":
+                    item.setText(f"📁  {kat}")
+                else:
+                    item.setText(f"📁  {kat}  ({anzahl})")
 
     def _zeige_kategorie(self, kategorie: str):
         """Tabelle mit Dateien der gewählten Kategorie befüllen."""
@@ -1622,6 +1625,7 @@ class MitarbeiterDokumenteWidget(QWidget):
         self._btn_web.setVisible(is_stell)
         self._tabs.setTabVisible(1, is_stell)
         self._btn_verspaetung.setVisible(is_versp)
+        self._btn_neu.setVisible(not is_versp)
         self._tabs.setTabVisible(2, is_versp)
         if is_versp:
             self._versp_jahre_aktualisieren()

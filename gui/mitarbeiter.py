@@ -668,24 +668,24 @@ class MitarbeiterHauptWidget(QWidget):
         self._dokumente_tab = None
         self._dokumente_placeholder = QWidget()  # leerer Platzhalter
 
-        self._tabs.addTab(self._uebersicht_tab,       "👥  Übersicht")
         self._tabs.addTab(self._dokumente_placeholder, "📄  Dokumente")
+        self._tabs.addTab(self._uebersicht_tab,       "👥  Übersicht")
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
         layout.addWidget(self._tabs)
 
     def _on_tab_changed(self, index: int):
-        """Lädt MitarbeiterDokumenteWidget beim ersten Klick auf Tab 2."""
-        if index == 1 and self._dokumente_tab is None:
+        """Lädt MitarbeiterDokumenteWidget beim ersten Klick auf Tab 0 (Dokumente)."""
+        if index == 0 and self._dokumente_tab is None:
             from gui.mitarbeiter_dokumente import MitarbeiterDokumenteWidget
             self._dokumente_tab = MitarbeiterDokumenteWidget()
             # Platzhalter ersetzen
-            self._tabs.removeTab(1)
-            self._tabs.insertTab(1, self._dokumente_tab, "📄  Dokumente")
-            self._tabs.setCurrentIndex(1)
+            self._tabs.removeTab(0)
+            self._tabs.insertTab(0, self._dokumente_tab, "📄  Dokumente")
+            self._tabs.setCurrentIndex(0)
 
     def refresh(self):
         self._uebersicht_tab.refresh()
-        if self._tabs.currentIndex() == 1 and self._dokumente_tab is not None:
+        if self._tabs.currentIndex() == 0 and self._dokumente_tab is not None:
             self._dokumente_tab.refresh()
 
