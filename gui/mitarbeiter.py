@@ -685,6 +685,9 @@ class MitarbeiterHauptWidget(QWidget):
             self._tabs.setCurrentIndex(0)
 
     def refresh(self):
+        # Beim ersten Aufruf: Dokumente-Tab sofort laden wenn er aktiv ist
+        if self._dokumente_tab is None and self._tabs.currentIndex() == 0:
+            self._on_tab_changed(0)
         self._uebersicht_tab.refresh()
         if self._tabs.currentIndex() == 0 and self._dokumente_tab is not None:
             self._dokumente_tab.refresh()

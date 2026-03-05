@@ -7,8 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from functions.stellungnahmen_db import eintrag_speichern as _db_eintrag_speichern
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from config import BASE_DIR
 
 # Pfad zur Vorlage mit Kopf-/Fußzeile
 VORLAGE_PFAD = os.path.join(
