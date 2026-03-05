@@ -538,3 +538,48 @@ class MitarbeiterWidget(QWidget):
     def _import_fehler(self, msg: str):
         self._progress.close()
         QMessageBox.critical(self, "Import-Fehler", f"Fehler beim Import:\n{msg}")
+
+
+# ── Kombiniertes Haupt-Widget (Tab: Übersicht + Dokumente) ─────────────────────
+
+class MitarbeiterHauptWidget(QWidget):
+    """Kombiniertes Widget: Tab 1 = Mitarbeiter-Übersicht, Tab 2 = Dokumente."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QTabWidget
+        from gui.mitarbeiter_dokumente import MitarbeiterDokumenteWidget
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setStyleSheet("""
+            QTabBar::tab {
+                min-width: 160px;
+                padding: 10px 20px;
+                font-size: 13px;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                color: #1565a8;
+                font-weight: bold;
+                border-bottom: 2px solid #1565a8;
+            }
+        """)
+
+        self._uebersicht_tab = MitarbeiterWidget()
+        self._dokumente_tab  = MitarbeiterDokumenteWidget()
+
+        self._tabs.addTab(self._uebersicht_tab, "👥  Übersicht")
+        self._tabs.addTab(self._dokumente_tab,  "📄  Dokumente")
+
+        layout.addWidget(self._tabs)
+
+    def refresh(self):
+        self._uebersicht_tab.refresh()
+        if self._tabs.currentIndex() == 1:
+            self._dokumente_tab.refresh()
+
