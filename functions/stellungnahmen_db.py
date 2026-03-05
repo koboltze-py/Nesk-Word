@@ -7,8 +7,7 @@ import os
 import sqlite3
 from datetime import datetime
 from contextlib import contextmanager
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from config import BASE_DIR
 
 DB_ORDNER = os.path.join(BASE_DIR, "database SQL")
 DB_PFAD   = os.path.join(DB_ORDNER, "stellungnahmen.db")

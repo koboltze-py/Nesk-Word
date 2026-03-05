@@ -5,9 +5,9 @@ Protokollierung von Meldungen über unpünktlichen Dienstantritt.
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+from config import BASE_DIR as _BASE_DIR
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-_DB_PFAD = BASE_DIR / "database SQL" / "verspaetungen.db"
+_DB_PFAD = Path(_BASE_DIR) / "database SQL" / "verspaetungen.db"
 
 
 def _connect() -> sqlite3.Connection:
