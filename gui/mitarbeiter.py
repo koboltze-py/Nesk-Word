@@ -176,7 +176,7 @@ class MitarbeiterWidget(QWidget):
         super().__init__(parent)
         self._alle: list[Mitarbeiter] = []
         self._build_ui()
-        self.refresh()
+        # refresh() wird von MitarbeiterHauptWidget.refresh() aufgerufen
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -543,12 +543,13 @@ class MitarbeiterWidget(QWidget):
 # ── Kombiniertes Haupt-Widget (Tab: Übersicht + Dokumente) ─────────────────────
 
 class MitarbeiterHauptWidget(QWidget):
-    """Kombiniertes Widget: Tab 1 = Mitarbeiter-Übersicht, Tab 2 = Dokumente."""
+    """Kombiniertes Widget: Tab 1 = Mitarbeiter-Übersicht, Tab 2 = Dokumente.
+    MitarbeiterDokumenteWidget wird erst beim ersten Klick auf Tab 2 geladen.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         from PySide6.QtWidgets import QTabWidget
-        from gui.mitarbeiter_dokumente import MitarbeiterDokumenteWidget
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -571,15 +572,29 @@ class MitarbeiterHauptWidget(QWidget):
         """)
 
         self._uebersicht_tab = MitarbeiterWidget()
-        self._dokumente_tab  = MitarbeiterDokumenteWidget()
 
-        self._tabs.addTab(self._uebersicht_tab, "👥  Übersicht")
-        self._tabs.addTab(self._dokumente_tab,  "📄  Dokumente")
+        # Dokumente-Tab: erst beim ersten Klick laden (Lazy Loading)
+        self._dokumente_tab = None
+        self._dokumente_placeholder = QWidget()  # leerer Platzhalter
+
+        self._tabs.addTab(self._uebersicht_tab,       "👥  Übersicht")
+        self._tabs.addTab(self._dokumente_placeholder, "📄  Dokumente")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
 
         layout.addWidget(self._tabs)
 
+    def _on_tab_changed(self, index: int):
+        """Lädt MitarbeiterDokumenteWidget beim ersten Klick auf Tab 2."""
+        if index == 1 and self._dokumente_tab is None:
+            from gui.mitarbeiter_dokumente import MitarbeiterDokumenteWidget
+            self._dokumente_tab = MitarbeiterDokumenteWidget()
+            # Platzhalter ersetzen
+            self._tabs.removeTab(1)
+            self._tabs.insertTab(1, self._dokumente_tab, "📄  Dokumente")
+            self._tabs.setCurrentIndex(1)
+
     def refresh(self):
         self._uebersicht_tab.refresh()
-        if self._tabs.currentIndex() == 1:
+        if self._tabs.currentIndex() == 1 and self._dokumente_tab is not None:
             self._dokumente_tab.refresh()
 
