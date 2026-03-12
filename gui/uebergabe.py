@@ -1135,12 +1135,20 @@ class UebergabeWidget(QWidget):
             dienst_combo.addItem(label, code)
         form.addRow("Dienstart *:", dienst_combo)
 
-        # Dienstbeginn (Soll) – gesperrt
+        # Dienstbeginn (Soll) – editierbar mit Warnung
         beginn_edit = QTimeEdit(QTime(6, 0))
         beginn_edit.setDisplayFormat("HH:mm")
-        beginn_edit.setReadOnly(True)
-        beginn_edit.setStyleSheet("background:#f0f0f0;color:#555;")
+        beginn_hint = QLabel("⚠️ Sollzeit manuell geändert – überprüfen!")
+        beginn_hint.setStyleSheet(
+            "color:#b35900;font-size:10px;font-weight:bold;border:none;"
+        )
+        beginn_hint.setVisible(False)
         form.addRow("Dienstbeginn (Soll):", beginn_edit)
+        form.addRow("", beginn_hint)
+        _dienst_soll_map: dict[int, str] = {
+            i: t[2] for i, t in enumerate(_DIENST_ITEMS)
+        }
+        _soll_manuell_geaendert = [False]
 
         # Tatsächlicher Antritt
         antritt_edit = QTimeEdit(QTime(6, 0))
@@ -1190,9 +1198,29 @@ class UebergabeWidget(QWidget):
         def _on_dienst_changed(idx):
             _, code, beginn = _DIENST_ITEMS[idx]
             h, m = map(int, beginn.split(":"))
+            _soll_manuell_geaendert[0] = False
+            beginn_hint.setVisible(False)
+            beginn_edit.setStyleSheet("")
             beginn_edit.setTime(QTime(h, m))
             antritt_edit.setTime(QTime(h, m))
             _update_versp()
+
+        def _on_soll_manuell(t):
+            expected = _dienst_soll_map.get(dienst_combo.currentIndex(), "")
+            h, m = (int(x) for x in expected.split(":")) if expected else (0, 0)
+            if t != QTime(h, m):
+                _soll_manuell_geaendert[0] = True
+                beginn_hint.setVisible(True)
+                beginn_edit.setStyleSheet(
+                    "border:1px solid #b35900;border-radius:3px;background:#fff8ee;"
+                )
+            else:
+                _soll_manuell_geaendert[0] = False
+                beginn_hint.setVisible(False)
+                beginn_edit.setStyleSheet("")
+            _update_versp()
+
+        beginn_edit.timeChanged.connect(_on_soll_manuell)
 
         dienst_combo.currentIndexChanged.connect(_on_dienst_changed)
 
@@ -2212,7 +2240,9 @@ class UebergabeWidget(QWidget):
                 _vsp_lines = ["", "─" * 38, "🕐 Verspätete Mitarbeiter:", "─" * 38]
                 for _, _e in _checked_vsp:
                     _n, _s, _i, _d = _vsp_label(_e)
-                    _vsp_lines.append(f"  • {_n}  –  Gefordert: {_s}  Tatsächlich: {_i}{_d}")
+                    _datum_str = _e.get("datum", "") if isinstance(_e, dict) else ""
+                    _datum_txt = f"  📅 {_datum_str}" if _datum_str else ""
+                    _vsp_lines.append(f"  • {_n}{_datum_txt}  –  Gefordert: {_s}  Tatsächlich: {_i}{_d}")
                 body_text += "\n" + "\n".join(_vsp_lines)
 
             # Einsätze in Body einbauen
