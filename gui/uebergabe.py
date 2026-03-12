@@ -900,7 +900,7 @@ class UebergabeWidget(QWidget):
                 ist  = db_e.get("dienstantritt", "")
                 if ma and (ma, soll) not in existing_keys:
                     eintraege_vsp.append((ma, soll, ist))
-                    existing_keys.add((ma, soll))
+                    existing_keys.add((ma, soll))  # sofort aktualisieren → keine Dopplung
             speichere_verspaetungen(self._aktives_protokoll_id, eintraege_vsp)
 
     def _abschliessen(self):
@@ -961,23 +961,18 @@ class UebergabeWidget(QWidget):
                 item.widget().deleteLater()
         self._verspaetungen_widgets.clear()
 
-        # Read-only: Tagdienst=heute, Nachtdienst=heute+Vortag (immer, auch für gespeicherte Protokolle)
+        # Read-only: Tagdienst=heute, Nachtdienst=heute (kein Vortag)
         db_eintraege: list = []
         try:
             datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
-            db_eintraege = lade_vsp_aus_db(datum_iso)
-            if getattr(self, "_aktueller_typ", "tagdienst") == "nachtdienst":
-                from datetime import date as _date, timedelta
-                qd = self._f_datum.date()
-                vortag = _date(qd.year(), qd.month(), qd.day()) - timedelta(days=1)
-                vortag_iso = vortag.strftime("%Y-%m-%d")
-                vortag_eintraege = lade_vsp_aus_db(vortag_iso)
-                seen = {(e.get("mitarbeiter"), e.get("dienstbeginn")) for e in db_eintraege}
-                for e in vortag_eintraege:
-                    key = (e.get("mitarbeiter"), e.get("dienstbeginn"))
-                    if key not in seen:
-                        db_eintraege.insert(0, e)
-                        seen.add(key)
+            raw = lade_vsp_aus_db(datum_iso)
+            # Deduplizieren nach (mitarbeiter, dienstbeginn) – neuesten Eintrag behalten
+            _seen_db: set = set()
+            for _e in raw:
+                _k = (_e.get("mitarbeiter", ""), _e.get("dienstbeginn", ""))
+                if _k not in _seen_db:
+                    db_eintraege.append(_e)
+                    _seen_db.add(_k)
         except Exception:
             pass
         self._verspaetungen_db_entries = list(db_eintraege)
@@ -1834,24 +1829,25 @@ class UebergabeWidget(QWidget):
             alle_vsp = lade_verspaetungen(pid) if pid else []
         except Exception:
             alle_vsp = []
-        # Aus verspaetungen.db (MA-Doku): Tagdienst=heute, Nachtdienst=heute+Vortag
+        # Aus verspaetungen.db (MA-Doku): nur aktueller Tag (kein Vortag)
         try:
             _datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
             _db_vsp_heute = lade_vsp_aus_db(_datum_iso)
-            _db_vsp_extra = []
-            if self._aktueller_typ == "nachtdienst":
-                from datetime import date as _ddate, timedelta as _tdelta
-                _qd = self._f_datum.date()
-                _vortag = _ddate(_qd.year(), _qd.month(), _qd.day()) - _tdelta(days=1)
-                _vortag_iso = _vortag.strftime("%Y-%m-%d")
-                _vortag_vsp = lade_vsp_aus_db(_vortag_iso)
-                _seen = {(e.get("mitarbeiter"), e.get("dienstbeginn")) for e in _db_vsp_heute}
-                for _ev in _vortag_vsp:
-                    _key = (_ev.get("mitarbeiter"), _ev.get("dienstbeginn"))
-                    if _key not in _seen:
-                        _db_vsp_extra.append(_ev)
-                        _seen.add(_key)
-            alle_vsp = _db_vsp_extra + _db_vsp_heute + alle_vsp
+            # Dedup: DB-Einträge nicht hinzufügen, wenn (name, soll) bereits in gespeicherten Einträgen
+            _saved_keys = set()
+            for _sv in alle_vsp:
+                if isinstance(_sv, dict):
+                    _saved_keys.add((_sv.get("mitarbeiter", ""), _sv.get("soll_zeit", "")))
+                else:
+                    try:
+                        _saved_keys.add((_sv[0], _sv[1]))
+                    except Exception:
+                        pass
+            _db_vsp_heute = [
+                _e for _e in _db_vsp_heute
+                if (_e.get("mitarbeiter", ""), _e.get("dienstbeginn", "")) not in _saved_keys
+            ]
+            alle_vsp = _db_vsp_heute + alle_vsp
         except Exception:
             pass
 
@@ -1888,14 +1884,9 @@ class UebergabeWidget(QWidget):
         vsp_hdr_lbl = QLabel("🕐 Verspätete Mitarbeiter – Datum / Zeitraum filtern")
         vsp_hdr_lbl.setStyleSheet("font-weight:bold;font-size:11px;border:none;")
 
-        # Datum-Filter: Tagdienst=heute, Nachtdienst=Vortag als zweites Datum
+        # Datum-Filter: immer aktueller Tag (kein Vortag)
         _datum_qdate = self._f_datum.date()
-        if self._aktueller_typ == "nachtdienst":
-            from datetime import date as _ddate2, timedelta as _tdelta2
-            _vt = _ddate2(_datum_qdate.year(), _datum_qdate.month(), _datum_qdate.day()) - _tdelta2(days=1)
-            _default_von_datum = QDate(_vt.year, _vt.month, _vt.day)
-        else:
-            _default_von_datum = _datum_qdate
+        _default_von_datum = _datum_qdate
 
         _datum_von_lbl = QLabel("Datum von:")
         _datum_von_lbl.setStyleSheet("border:none;font-size:10px;")
