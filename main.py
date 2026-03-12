@@ -30,33 +30,48 @@ from gui.main_window import MainWindow
 
 
 def _db_startup_backup():
-    """Erstellt beim Programmstart ein SQLite-Backup aller Datenbanken im
-    'database SQL'-Verzeichnis. Behält die letzten 7 Backups je Datenbank."""
+    """Erstellt beim Programmstart ein SQLite-Backup aller Datenbanken.
+    Struktur: db_backups/YYYY-MM-DD/<name>_HHMMSS.db
+    Pro Tag max. 5 Backups je Datenbank, max. 7 Tages-Ordner insgesamt."""
     try:
         from config import DB_PATH
+        from datetime import date as _date, timedelta as _td
         db_dir = os.path.dirname(DB_PATH)
-        backup_dir = os.path.join(db_dir, "Backup Data", "db_backups")
-        os.makedirs(backup_dir, exist_ok=True)
-        datum = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_backup = os.path.join(db_dir, "Backup Data", "db_backups")
+        jetzt = datetime.now()
+        tag_ordner = os.path.join(base_backup, jetzt.strftime("%Y-%m-%d"))
+        os.makedirs(tag_ordner, exist_ok=True)
+        zeitstempel = jetzt.strftime("%H%M%S")
 
         # Alle .db-Dateien direkt im database SQL-Ordner sichern (keine Unterordner)
         for db_path in glob.glob(os.path.join(db_dir, "*.db")):
             name = os.path.splitext(os.path.basename(db_path))[0]
-            backup_path = os.path.join(backup_dir, f"{name}_{datum}.db")
-            # SQLite-native Online-Backup (atomar, keine Lock-Probleme)
+            backup_path = os.path.join(tag_ordner, f"{name}_{zeitstempel}.db")
             src = sqlite3.connect(db_path)
             dst = sqlite3.connect(backup_path)
             src.backup(dst)
             dst.close()
             src.close()
-            # Nur die letzten 5 Backups behalten
-            alle = sorted(glob.glob(os.path.join(backup_dir, f"{name}_*.db")))
-            for alt in alle[:-5]:
+            # Pro Tag nur die letzten 5 Backups je Datenbank behalten
+            tages_backups = sorted(glob.glob(os.path.join(tag_ordner, f"{name}_*.db")))
+            for alt in tages_backups[:-5]:
                 try:
                     os.remove(alt)
                 except Exception:
                     pass
-            print(f"[OK] DB-Backup erstellt: {os.path.basename(backup_path)}")
+            print(f"[OK] DB-Backup: {jetzt.strftime('%Y-%m-%d')}/{os.path.basename(backup_path)}")
+
+        # Nur die letzten 7 Tages-Ordner behalten
+        alle_tage = sorted([
+            d for d in os.listdir(base_backup)
+            if os.path.isdir(os.path.join(base_backup, d)) and len(d) == 10 and d.count("-") == 2
+        ])
+        for alter_tag in alle_tage[:-7]:
+            try:
+                shutil.rmtree(os.path.join(base_backup, alter_tag))
+                print(f"[DEL] Alter Tages-Ordner gelöscht: {alter_tag}")
+            except Exception:
+                pass
     except Exception as e:
         print(f"[WARNUNG] DB-Backup fehlgeschlagen: {e}")
 
