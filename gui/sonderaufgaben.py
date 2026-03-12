@@ -544,6 +544,8 @@ class SonderaufgabenWidget(QWidget):
         except Exception:
             pass
         return "color:#888; font-style:italic;"
+
+    def _combo_to_line(self, key: str, choice: str):
         """Dropdown-Auswahl in Textfeld übertragen. Bulmor: mehrere mit / anhängen."""
         if not choice or choice in ("— bitte wählen —", "— Dienstplan laden —") \
                 or choice.startswith("⚠"):

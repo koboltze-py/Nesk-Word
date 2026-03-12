@@ -4,6 +4,31 @@ Alle Änderungen in chronologischer Reihenfolge.
 
 ---
 
+## 12.03.2026 – v3.4.2
+
+### Übergabe – Verspätungs-Bugfixes & Verbesserungen
+
+#### `gui/uebergabe.py`
+- **Bugfix**: Vortag-Verspätungen beim Nachtdienst nach Speichern nicht mehr angezeigt → `protokoll_id is None`-Guard entfernt
+- **Bugfix**: Auto-geladene Einträge (blaue Zeilen) wurden nicht persistiert → `_speichern()` speichert auch `_verspaetungen_db_entries`
+- **Bugfix**: Duplikate nach Reload → Dedup via `saved_keys`-Set
+- **E-Mail-Dialog**: Datum-von/bis-Filter für verspätete Mitarbeiter
+- **„Aus Verspätungen wählen"**: letzte 7 Tage mit `[dd.MM.yyyy]`-Datum-Prefix
+
+#### `gui/sonderaufgaben.py`
+- **Bugfix**: `_combo_to_line()` war unreachable Code → als eigenständige Methode wiederhergestellt
+
+#### `functions/verspaetung_db.py`
+- **Neue Funktion** `lade_verspaetungen_letzter_zeitraum(tage=7)`
+
+### Einsätze & Patienten DRK Station
+
+#### `gui/dienstliches.py`
+- **Sortierung**: Einsätze und Patienten jetzt aufsteigend (ASC) – neue Einträge am Ende
+- **Keine Pflichtfelder**: Validierung in Einsatz-Dialog und Patienten-Dialog entfernt
+
+---
+
 ## 11.03.2026 – v3.4.1
 
 ### Hilfe-Dialog: Live-Screenshot-Galerie + Benutzeranleitung

@@ -1,6 +1,6 @@
 # Nesk3 – Vollständige Funktionsübersicht
 
-**Stand:** 11.03.2026 – v3.4.1  
+**Stand:** 12.03.2026 – v3.4.2  
 **App:** Nesk3 – DRK Erste-Hilfe-Station Flughafen Köln/Bonn  
 **Zweck:** Dienstplan-Verwaltung, Stärkemeldung, Mitarbeiterdokumente, Einsatzprotokoll, Verspätungs-Meldungen, Übergabe, Code-19, Hilfe-Screenshot-Galerie
 

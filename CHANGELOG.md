@@ -5,6 +5,32 @@ Format: `[Datum] Beschreibung – betroffene Dateien`
 
 ---
 
+## 12.03.2026 – v3.4.2
+
+### Übergabe – Verspätungs-Bugfixes & Verbesserungen
+
+#### `gui/uebergabe.py`
+- **Bugfix**: Auto-geladene Vortag-Verspätungen beim Nachtdienst wurden nach Speichern nicht mehr angezeigt → `protokoll_id is None`-Guard entfernt; Vortag wird immer geladen
+- **Bugfix**: Automatisch angezeigte blaue Einträge wurden nicht in `uebergabe_verspaetungen` gespeichert → `_speichern()` persistiert jetzt auch `_verspaetungen_db_entries`
+- **Bugfix**: Duplikate nach Reload → Dedup-Logik via `saved_keys`-Set
+- **E-Mail-Dialog**: Datum-von/bis-Filter (`QDateEdit`) für verspätete Mitarbeiter; Default Tagdienst=heute, Nachtdienst=Vortag→heute
+- **„Aus Verspätungen wählen"**: letzte 7 Tage mit `[dd.MM.yyyy]`-Datum-Prefix
+
+#### `gui/sonderaufgaben.py`
+- **Bugfix**: `_combo_to_line()` war unreachable Code hinter `return` von `_bulmor_status_style` → als eigenständige Methode wiederhergestellt; Namen aus ComboBoxen werden korrekt auf Vorlage übertragen
+
+#### `functions/verspaetung_db.py`
+- **Neue Funktion** `lade_verspaetungen_letzter_zeitraum(tage: int = 7)`: lädt alle Verspätungseinträge der letzten N Tage (Dedup, sortiert neueste zuerst)
+
+### Einsätze & Patienten DRK Station
+
+#### `gui/dienstliches.py`
+- **Sortierung Einsätze**: von `DESC` auf `ASC` → neue Einträge werden am Ende der Liste angereiht
+- **Sortierung Patienten**: gleiches Prinzip – chronologisch aufsteigend
+- **Keine Pflichtfelder**: Validierung im Einsatz-Dialog (`_on_accept`) und Patienten-Dialog (`_validate`) entfernt – alle Felder optional
+
+---
+
 ## 11.03.2026 – v3.4.1
 
 ### Hilfe-Dialog: Live-Screenshot-Galerie + Benutzeranleitung

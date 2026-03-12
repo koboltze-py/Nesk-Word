@@ -1,6 +1,6 @@
 # Nesk3 – Reproduktionsprotokoll
 
-**Stand:** 11.03.2026 – v3.4.1
+**Stand:** 12.03.2026 – v3.4.2
 
 ---
 

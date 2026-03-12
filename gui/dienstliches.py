@@ -350,7 +350,7 @@ def lade_patienten(
     sql = "SELECT * FROM patienten"
     if where_parts:
         sql += " WHERE " + " AND ".join(where_parts)
-    sql += " ORDER BY substr(datum,7,4)||substr(datum,4,2)||substr(datum,1,2) DESC, id DESC"
+    sql += " ORDER BY substr(datum,7,4)||substr(datum,4,2)||substr(datum,1,2) ASC, id ASC"
     with _patienten_db() as con:
         rows = con.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
@@ -530,7 +530,7 @@ def lade_einsaetze(
     sql = "SELECT * FROM einsaetze"
     if where_parts:
         sql += " WHERE " + " AND ".join(where_parts)
-    sql += " ORDER BY substr(datum,7,4)||substr(datum,4,2)||substr(datum,1,2) DESC, id DESC"
+    sql += " ORDER BY substr(datum,7,4)||substr(datum,4,2)||substr(datum,1,2) ASC, id ASC"
 
     with _db() as con:
         rows = con.execute(sql, params).fetchall()
@@ -963,12 +963,6 @@ class _EinsatzDialog(QDialog):
         self._bemerkung.setPlainText(d.get("bemerkung", ""))
 
     def _on_accept(self):
-        if not self._einsatzort.text().strip() and not self._stichwort.currentText().strip():
-            QMessageBox.warning(
-                self, "Pflichtfeld",
-                "Bitte mindestens Einsatzstichwort oder Einsatzort angeben."
-            )
-            return
         self.accept()
 
     def get_daten(self) -> dict:
@@ -1828,17 +1822,6 @@ class _PatientenDialog(QDialog):
 
     # ── Validierung ─────────────────────────────────────────────────────────────────────────
     def _validate(self):
-        if not self._hergang_was.toPlainText().strip():
-            QMessageBox.warning(self, "Pflichtfeld", "Bitte 'Was ist passiert?' ausfüllen.")
-            return
-        if not self._massnahmen.toPlainText().strip():
-            QMessageBox.warning(
-                self, "Pflichtfeld", "Bitte Art und Umfang der Behandlung ausfüllen."
-            )
-            return
-        if not self._drk_ma1.text().strip():
-            QMessageBox.warning(self, "Pflichtfeld", "Bitte mindestens DRK MA 1 angeben.")
-            return
         self.accept()
 
     # ── Daten auslesen ──────────────────────────────────────────────────────────────────────

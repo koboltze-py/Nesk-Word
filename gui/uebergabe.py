@@ -38,6 +38,7 @@ from functions.fahrzeug_functions import (
     markiere_schaden_gesendet,
 )
 from functions.verspaetung_db import lade_verspaetungen_fuer_datum as lade_vsp_aus_db
+from functions.verspaetung_db import lade_verspaetungen_letzter_zeitraum as lade_vsp_7_tage
 from functions.mitarbeiter_functions import lade_mitarbeiter_namen
 
 # ── Farben ──────────────────────────────────────────────────────────────────
@@ -151,6 +152,7 @@ class UebergabeWidget(QWidget):
         self._fahrzeug_notiz_widgets: dict = {}
         self._handy_eintraege_widgets: list = []  # list of (nr_edit, notiz_edit)
         self._verspaetungen_widgets: list = []   # list of (name_edit, soll_edit, ist_edit)
+        self._verspaetungen_db_entries: list = []  # auto-geladene DB-Einträge (verspaetungen.db)
         self._build_ui()
         self.refresh()
 
@@ -883,11 +885,22 @@ class UebergabeWidget(QWidget):
                 if nr.text().strip()
             ]
             speichere_handy_eintraege(self._aktives_protokoll_id, eintraege_handy)
+            # Manuell hinzugefügte Einträge
             eintraege_vsp = [
                 (n.text().strip(), s.text().strip(), i.text().strip())
                 for n, s, i in self._verspaetungen_widgets
                 if n.text().strip()
             ]
+            # Auch auto-geladene DB-Einträge (blaue Zeilen) persistieren,
+            # sofern nicht schon als manuelle Zeile vorhanden
+            existing_keys = {(name, soll) for name, soll, _ in eintraege_vsp}
+            for db_e in self._verspaetungen_db_entries:
+                ma   = db_e.get("mitarbeiter", "")
+                soll = db_e.get("dienstbeginn", "")
+                ist  = db_e.get("dienstantritt", "")
+                if ma and (ma, soll) not in existing_keys:
+                    eintraege_vsp.append((ma, soll, ist))
+                    existing_keys.add((ma, soll))
             speichere_verspaetungen(self._aktives_protokoll_id, eintraege_vsp)
 
     def _abschliessen(self):
@@ -948,28 +961,51 @@ class UebergabeWidget(QWidget):
                 item.widget().deleteLater()
         self._verspaetungen_widgets.clear()
 
-        # Read-only: Einträge aus verspaetungen.db für diesen Tag
-        datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
+        # Read-only: Tagdienst=heute, Nachtdienst=heute+Vortag (immer, auch für gespeicherte Protokolle)
         db_eintraege: list = []
         try:
+            datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
             db_eintraege = lade_vsp_aus_db(datum_iso)
+            if getattr(self, "_aktueller_typ", "tagdienst") == "nachtdienst":
+                from datetime import date as _date, timedelta
+                qd = self._f_datum.date()
+                vortag = _date(qd.year(), qd.month(), qd.day()) - timedelta(days=1)
+                vortag_iso = vortag.strftime("%Y-%m-%d")
+                vortag_eintraege = lade_vsp_aus_db(vortag_iso)
+                seen = {(e.get("mitarbeiter"), e.get("dienstbeginn")) for e in db_eintraege}
+                for e in vortag_eintraege:
+                    key = (e.get("mitarbeiter"), e.get("dienstbeginn"))
+                    if key not in seen:
+                        db_eintraege.insert(0, e)
+                        seen.add(key)
         except Exception:
             pass
+        self._verspaetungen_db_entries = list(db_eintraege)
 
-        # Manuelle Einträge aus uebergabe_verspaetungen
+        # Gespeicherte Einträge aus uebergabe_verspaetungen
         eintraege = lade_verspaetungen(protokoll_id) if protokoll_id else []
+        # Schlüsselmenge der bereits gespeicherten Einträge (Name + Soll-Zeit)
+        saved_keys = {
+            (e["mitarbeiter"] if isinstance(e, dict) else e[0],
+             e["soll_zeit"]   if isinstance(e, dict) else e[1])
+            for e in eintraege
+        }
 
-        # Schreibgeschützte MA-Doku-Einträge anzeigen
-        if db_eintraege:
+        # Schreibgeschützte MA-Doku-Einträge anzeigen (nur wenn NICHT schon als orange gespeichert)
+        ungespreicherte_db = [
+            e for e in db_eintraege
+            if (e.get("mitarbeiter", ""), e.get("dienstbeginn", "")) not in saved_keys
+        ]
+        if ungespreicherte_db:
             hdr = QLabel("📋 Aus Mitarbeiter-Dokumente (schreibgeschützt):")
             hdr.setStyleSheet(
                 "color:#1a6b8a;font-size:10px;font-weight:bold;border:none;"
             )
             self._verspaetungen_section_layout.addWidget(hdr)
-            for e in db_eintraege:
+            for e in ungespreicherte_db:
                 self._add_verspaetung_db_row(e)
 
-        # Manuelle Einträge anzeigen
+        # Gespeicherte Einträge anzeigen
         if eintraege:
             for e in eintraege:
                 name = e["mitarbeiter"] if isinstance(e, dict) else e[0]
@@ -977,7 +1013,7 @@ class UebergabeWidget(QWidget):
                 ist  = e["ist_zeit"]    if isinstance(e, dict) else e[2]
                 self._add_verspaetung_row(name=name, soll_zeit=soll, ist_zeit=ist,
                                           _skip_hint_remove=True)
-        elif not db_eintraege:
+        elif not ungespreicherte_db:
             hint = QLabel("✅ Keine Verspätungen eingetragen – ➕ hinzufügen")
             hint.setStyleSheet("color: #aaa; font-size: 10px; border: none;")
             self._verspaetungen_section_layout.addWidget(hint)
@@ -1181,18 +1217,17 @@ class UebergabeWidget(QWidget):
         return ma, soll, ist
 
     def _pick_from_verspaetungen_db(self):
-        """Auswahl aus bereits erfassten Verspätungen (verspaetungen.db) für den aktuellen Tag."""
-        datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
+        """Auswahl aus allen Verspätungen der letzten 7 Tage."""
         try:
-            eintraege = lade_vsp_aus_db(datum_iso)
+            eintraege = lade_vsp_7_tage(7)
         except Exception:
             eintraege = []
 
         if not eintraege:
             QMessageBox.information(
                 self, "Keine Verspätungen",
-                f"Für {self._f_datum.date().toString('dd.MM.yyyy')} sind keine "
-                "Verspätungen in der Mitarbeiter-Dokumentation erfasst."
+                "In den letzten 7 Tagen wurden keine Verspätungen in der "
+                "Mitarbeiter-Dokumentation erfasst."
             )
             return
 
@@ -1210,12 +1245,13 @@ class UebergabeWidget(QWidget):
         lst = QListWidget()
         lst.setStyleSheet("border:1px solid #ccc;border-radius:3px;font-size:12px;")
         for e in eintraege:
-            ma    = e.get("mitarbeiter", "?")
-            soll  = e.get("dienstbeginn", "")
-            ist   = e.get("dienstantritt", "")
-            diff  = e.get("verspaetung_min", "")
-            label = f"{ma}   Soll: {soll}  Ist: {ist}  ({diff} Min.)"
-            item_widget = lst.model()
+            ma       = e.get("mitarbeiter", "?")
+            soll     = e.get("dienstbeginn", "")
+            ist      = e.get("dienstantritt", "")
+            diff     = e.get("verspaetung_min", "")
+            e_datum  = e.get("datum", "")   # Format dd.MM.yyyy aus der DB
+            # Datum immer anzeigen (letzte 7 Tage können verschiedene Tage haben)
+            label = f"[{e_datum}]  {ma}   Soll: {soll}  Ist: {ist}  ({diff} Min.)"
             lst.addItem(label)
             lst.item(lst.count() - 1).setData(Qt.ItemDataRole.UserRole, e)
         vlay.addWidget(lst)
@@ -1337,11 +1373,13 @@ class UebergabeWidget(QWidget):
         ist      = e.get("dienstantritt", "")
         min_vsp  = e.get("verspaetung_min", "")
         dienst   = e.get("dienst", "")
+        datum    = e.get("datum", "")
 
         name_lbl = QLabel(f"👤 {name}")
         name_lbl.setStyleSheet("border:none;font-size:11px;font-weight:bold;")
         diff_txt  = f"  (+{min_vsp} Min.)" if min_vsp else ""
-        info_lbl  = QLabel(f"Dienst: {dienst}  Soll: {soll}  Ist: {ist}{diff_txt}")
+        datum_txt = f"  📅 {datum}" if datum else ""
+        info_lbl  = QLabel(f"Dienst: {dienst}  Soll: {soll}  Ist: {ist}{diff_txt}{datum_txt}")
         info_lbl.setStyleSheet("border:none;font-size:10px;color:#1a5b78;")
         src_lbl   = QLabel("📋 MA-Doku")
         src_lbl.setStyleSheet(
@@ -1796,10 +1834,24 @@ class UebergabeWidget(QWidget):
             alle_vsp = lade_verspaetungen(pid) if pid else []
         except Exception:
             alle_vsp = []
-        # Auch Einträge aus verspaetungen.db (MA-Doku) für diesen Tag hinzufügen
+        # Aus verspaetungen.db (MA-Doku): Tagdienst=heute, Nachtdienst=heute+Vortag
         try:
             _datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
-            alle_vsp = lade_vsp_aus_db(_datum_iso) + alle_vsp
+            _db_vsp_heute = lade_vsp_aus_db(_datum_iso)
+            _db_vsp_extra = []
+            if self._aktueller_typ == "nachtdienst":
+                from datetime import date as _ddate, timedelta as _tdelta
+                _qd = self._f_datum.date()
+                _vortag = _ddate(_qd.year(), _qd.month(), _qd.day()) - _tdelta(days=1)
+                _vortag_iso = _vortag.strftime("%Y-%m-%d")
+                _vortag_vsp = lade_vsp_aus_db(_vortag_iso)
+                _seen = {(e.get("mitarbeiter"), e.get("dienstbeginn")) for e in _db_vsp_heute}
+                for _ev in _vortag_vsp:
+                    _key = (_ev.get("mitarbeiter"), _ev.get("dienstbeginn"))
+                    if _key not in _seen:
+                        _db_vsp_extra.append(_ev)
+                        _seen.add(_key)
+            alle_vsp = _db_vsp_extra + _db_vsp_heute + alle_vsp
         except Exception:
             pass
 
@@ -1833,22 +1885,52 @@ class UebergabeWidget(QWidget):
         vsp_vl.setSpacing(6)
 
         vsp_hdr_row = QHBoxLayout()
-        vsp_hdr_lbl = QLabel("🕐 Verspätete Mitarbeiter – Zeitraum filtern")
+        vsp_hdr_lbl = QLabel("🕐 Verspätete Mitarbeiter – Datum / Zeitraum filtern")
         vsp_hdr_lbl.setStyleSheet("font-weight:bold;font-size:11px;border:none;")
-        _von_lbl = QLabel("Von:")
-        _von_lbl.setStyleSheet("border:none;font-size:11px;")
+
+        # Datum-Filter: Tagdienst=heute, Nachtdienst=Vortag als zweites Datum
+        _datum_qdate = self._f_datum.date()
+        if self._aktueller_typ == "nachtdienst":
+            from datetime import date as _ddate2, timedelta as _tdelta2
+            _vt = _ddate2(_datum_qdate.year(), _datum_qdate.month(), _datum_qdate.day()) - _tdelta2(days=1)
+            _default_von_datum = QDate(_vt.year, _vt.month, _vt.day)
+        else:
+            _default_von_datum = _datum_qdate
+
+        _datum_von_lbl = QLabel("Datum von:")
+        _datum_von_lbl.setStyleSheet("border:none;font-size:10px;")
+        vsp_datum_von_edit = QDateEdit(_default_von_datum)
+        vsp_datum_von_edit.setDisplayFormat("dd.MM.yyyy")
+        vsp_datum_von_edit.setCalendarPopup(True)
+        vsp_datum_von_edit.setFixedWidth(100)
+
+        _datum_bis_lbl = QLabel("bis:")
+        _datum_bis_lbl.setStyleSheet("border:none;font-size:10px;")
+        vsp_datum_bis_edit = QDateEdit(_datum_qdate)
+        vsp_datum_bis_edit.setDisplayFormat("dd.MM.yyyy")
+        vsp_datum_bis_edit.setCalendarPopup(True)
+        vsp_datum_bis_edit.setFixedWidth(100)
+
+        _von_lbl = QLabel("Zeit von:")
+        _von_lbl.setStyleSheet("border:none;font-size:10px;")
         vsp_von_edit = QLineEdit()
         vsp_von_edit.setPlaceholderText("00:00")
         vsp_von_edit.setText(beginn if beginn else "00:00")
-        vsp_von_edit.setFixedWidth(58)
-        _bis_lbl = QLabel("Bis:")
-        _bis_lbl.setStyleSheet("border:none;font-size:11px;")
+        vsp_von_edit.setFixedWidth(52)
+        _bis_lbl = QLabel("bis:")
+        _bis_lbl.setStyleSheet("border:none;font-size:10px;")
         vsp_bis_edit = QLineEdit()
         vsp_bis_edit.setPlaceholderText("23:59")
         vsp_bis_edit.setText(ende if ende else "23:59")
-        vsp_bis_edit.setFixedWidth(58)
+        vsp_bis_edit.setFixedWidth(52)
+
         vsp_hdr_row.addWidget(vsp_hdr_lbl)
         vsp_hdr_row.addStretch()
+        vsp_hdr_row.addWidget(_datum_von_lbl)
+        vsp_hdr_row.addWidget(vsp_datum_von_edit)
+        vsp_hdr_row.addWidget(_datum_bis_lbl)
+        vsp_hdr_row.addWidget(vsp_datum_bis_edit)
+        vsp_hdr_row.addSpacing(8)
         vsp_hdr_row.addWidget(_von_lbl)
         vsp_hdr_row.addWidget(vsp_von_edit)
         vsp_hdr_row.addWidget(_bis_lbl)
@@ -1880,20 +1962,32 @@ class UebergabeWidget(QWidget):
                 _nl.setStyleSheet("color:#aaa;font-size:10px;border:none;padding:4px;")
                 vsp_inner_vl.addWidget(_nl)
                 return
-            from datetime import datetime as _dt2
+            from datetime import datetime as _dt2, date as _ddate3
             def _pt(s):
                 try: return _dt2.strptime(s.strip(), "%H:%M")
+                except: return None
+            def _pd(s):
+                # Parst dd.MM.yyyy aus DB-Feld "datum"
+                try: return _ddate3.strptime(s.strip(), "%d.%m.%Y")
                 except: return None
             t_von = _pt(vsp_von_edit.text())
             t_bis = _pt(vsp_bis_edit.text())
             _overnight = (t_von and t_bis and t_von > t_bis)
+            d_von = vsp_datum_von_edit.date().toPython()
+            d_bis = vsp_datum_bis_edit.date().toPython()
             shown = 0
             for _e in alle_vsp:
                 _n, _s, _i, _d = _vsp_label(_e)
+                # Datumsfilter (nur für MA-Doku-Einträge mit "datum"-Feld)
+                _e_datum_str = _e.get("datum", "") if isinstance(_e, dict) else ""
+                if _e_datum_str:
+                    _e_date = _pd(_e_datum_str)
+                    if _e_date and not (d_von <= _e_date <= d_bis):
+                        continue
+                # Zeitfilter
                 t_ist_v = _pt(_i)
                 if t_von and t_bis and t_ist_v:
                     if _overnight:
-                        # Nachtdienst über Mitternacht: z.B. 19:00–07:00
                         if not (t_ist_v >= t_von or t_ist_v <= t_bis):
                             continue
                     else:
@@ -1901,19 +1995,22 @@ class UebergabeWidget(QWidget):
                             continue
                 from PySide6.QtWidgets import QCheckBox as _QCB
                 _src_tag = "  📋" if (isinstance(_e, dict) and "dienstbeginn" in _e) else ""
-                _cb = _QCB(f"🕐 {_n}  –  Gefordert: {_s}  Tatsächlich: {_i}{_d}{_src_tag}")
+                _datum_tag = f"  [{_e_datum_str}]" if _e_datum_str else ""
+                _cb = _QCB(f"🕐 {_n}  –  Gefordert: {_s}  Tatsächlich: {_i}{_d}{_datum_tag}{_src_tag}")
                 _cb.setChecked(True)
                 _cb.setStyleSheet("font-size:10px;")
                 vsp_inner_vl.addWidget(_cb)
                 _vsp_checkboxes.append((_cb, _e))
                 shown += 1
             if shown == 0:
-                _nl2 = QLabel(f"Keine Verspätungen im Zeitraum {vsp_von_edit.text()}–{vsp_bis_edit.text()}.")
+                _nl2 = QLabel(f"Keine Verspätungen im gewählten Zeitraum.")
                 _nl2.setStyleSheet("color:#aaa;font-size:10px;border:none;padding:4px;")
                 vsp_inner_vl.addWidget(_nl2)
 
         vsp_von_edit.textChanged.connect(lambda _: _rebuild_vsp_liste())
         vsp_bis_edit.textChanged.connect(lambda _: _rebuild_vsp_liste())
+        vsp_datum_von_edit.dateChanged.connect(lambda _: _rebuild_vsp_liste())
+        vsp_datum_bis_edit.dateChanged.connect(lambda _: _rebuild_vsp_liste())
         _rebuild_vsp_liste()
         dlg_layout.addWidget(vsp_frame)
 

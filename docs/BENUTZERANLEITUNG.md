@@ -1,6 +1,6 @@
 # NESK 3 – Benutzeranleitung
 ## DRK Erste-Hilfe-Station Flughafen Köln/Bonn
-**Version 3.4.0 · Stand: März 2026**
+**Version 3.4.2 · Stand: 12.03.2026**
 
 ---
 

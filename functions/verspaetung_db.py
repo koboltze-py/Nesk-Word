@@ -146,6 +146,29 @@ def lade_verspaetungen_fuer_datum(datum_yyyymmdd: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def lade_verspaetungen_letzter_zeitraum(tage: int = 7) -> list[dict]:
+    """Alle Verspätungen der letzten N Tage zurückgeben, neueste zuerst."""
+    _init_db()
+    from datetime import date, timedelta
+    result: list[dict] = []
+    seen_ids: set[int] = set()
+    for i in range(tage):
+        d = date.today() - timedelta(days=i)
+        datum_filter = d.strftime("%d.%m.%Y")
+        with _connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM verspaetungen WHERE datum = ? ORDER BY erstellt_am DESC",
+                (datum_filter,),
+            ).fetchall()
+            for row in rows:
+                row_dict = dict(row)
+                if row_dict["id"] not in seen_ids:
+                    seen_ids.add(row_dict["id"])
+                    result.append(row_dict)
+    return result
+
+
 def verfuegbare_jahre() -> list[int]:
     """Liste aller Jahre mit Einträgen zurückgeben."""
     _init_db()
