@@ -2051,6 +2051,13 @@ class UebergabeWidget(QWidget):
         try:
             from functions.psa_db import lade_psa_fuer_datum as _lade_psa
             alle_psa = _lade_psa(_datum_dd)
+            # Für Nachtdienst: auch Folgetag-PSA laden (18:00–06:50)
+            if self._aktueller_typ == "nachtdienst":
+                try:
+                    _folgetag_dd = self._f_datum.date().addDays(1).toString("dd.MM.yyyy")
+                    alle_psa = alle_psa + _lade_psa(_folgetag_dd)
+                except Exception:
+                    pass
         except Exception:
             alle_psa = []
 
@@ -2137,6 +2144,14 @@ class UebergabeWidget(QWidget):
                    not in _db_keys
             ]
             alle_vsp = _db_vsp_heute + _legacy_only
+            # Für Nachtdienst: auch Folgetag-Verspätungen laden (Frühdienst bis 06:50)
+            if self._aktueller_typ == "nachtdienst":
+                try:
+                    _folgetag_iso = self._f_datum.date().addDays(1).toString("yyyy-MM-dd")
+                    _db_vsp_folgetag = lade_vsp_aus_db(_folgetag_iso)
+                    alle_vsp = alle_vsp + _db_vsp_folgetag
+                except Exception:
+                    pass
         except Exception:
             alle_vsp = _legacy_vsp
 
@@ -2186,7 +2201,8 @@ class UebergabeWidget(QWidget):
 
         _datum_bis_lbl = QLabel("bis:")
         _datum_bis_lbl.setStyleSheet("border:none;font-size:10px;")
-        vsp_datum_bis_edit = QDateEdit(_datum_qdate)
+        _default_bis_datum = _datum_qdate.addDays(1) if self._aktueller_typ == "nachtdienst" else _datum_qdate
+        vsp_datum_bis_edit = QDateEdit(_default_bis_datum)
         vsp_datum_bis_edit.setDisplayFormat("dd.MM.yyyy")
         vsp_datum_bis_edit.setCalendarPopup(True)
         vsp_datum_bis_edit.setFixedWidth(100)
@@ -2195,13 +2211,15 @@ class UebergabeWidget(QWidget):
         _von_lbl.setStyleSheet("border:none;font-size:10px;")
         vsp_von_edit = QLineEdit()
         vsp_von_edit.setPlaceholderText("00:00")
-        vsp_von_edit.setText(beginn if beginn else "00:00")
+        _default_von_zeit = "18:00" if self._aktueller_typ == "nachtdienst" else (beginn if beginn else "00:00")
+        vsp_von_edit.setText(_default_von_zeit)
         vsp_von_edit.setFixedWidth(52)
         _bis_lbl = QLabel("bis:")
         _bis_lbl.setStyleSheet("border:none;font-size:10px;")
         vsp_bis_edit = QLineEdit()
         vsp_bis_edit.setPlaceholderText("23:59")
-        vsp_bis_edit.setText(ende if ende else "23:59")
+        _default_bis_zeit = "06:50" if self._aktueller_typ == "nachtdienst" else (ende if ende else "23:59")
+        vsp_bis_edit.setText(_default_bis_zeit)
         vsp_bis_edit.setFixedWidth(52)
 
         vsp_hdr_row.addWidget(vsp_hdr_lbl)
