@@ -193,13 +193,8 @@ class SplashScreen(QWidget):
 
     # ------------------------------------------------------------------
     def set_status(self, message: str):
-        """Setzt Status und laesst die Animation kurz laufen."""
+        """Setzt den Status-Text (thread-sicher: nur Stringzuweisung)."""
         self._status = message
-        # Events pumpen damit Animation sichtbar laeuft
-        deadline = time.monotonic() + 0.08   # 80 ms Animation
-        while time.monotonic() < deadline:
-            QApplication.processEvents()
-            self.repaint()
 
     def finish(self, main_window=None):
         self._timer.stop()
