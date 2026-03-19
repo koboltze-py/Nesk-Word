@@ -187,6 +187,13 @@ class SonderaufgabenWidget(QWidget):
         self._btn_open_dienstplan.clicked.connect(self._open_dienstplan_excel)
         header_layout.addWidget(self._btn_open_dienstplan)
 
+        self._btn_zufall = QPushButton("🎲 Zufall")
+        self._btn_zufall.setStyleSheet(_btn_style("#7b2d8b", "#5a1e66"))
+        self._btn_zufall.setMinimumWidth(110)
+        self._btn_zufall.setToolTip("Nacht-Mitarbeiter zufällig verteilen (Dienstplan muss geladen sein)")
+        self._btn_zufall.clicked.connect(self._zufall_nacht)
+        header_layout.addWidget(self._btn_zufall)
+
         btn_save = QPushButton("💾 Speichern")
         btn_save.setStyleSheet(_btn_style(FIORI_SUCCESS, "#0a5c2f"))
         btn_save.setMinimumWidth(120)
@@ -944,6 +951,129 @@ class SonderaufgabenWidget(QWidget):
         self._tag_emobby        = []
         self._nacht_emobby      = []
         self._build_form()
+
+    # ── Zufall-Verteilung Nacht ───────────────────────────────────────────────
+
+    def _zufall_nacht(self):
+        """Verteilt Nacht-Mitarbeiter zufällig auf die Nacht-Aufgaben.
+
+        Regeln:
+        - Nur Nacht-Spalten werden befüllt.
+        - 'BTW Check + Sauberkeit' und 'E-mobby Check' → immer leer lassen.
+        - Bulmor mit Status 'ausser_dienst' → 'a.D.' eintragen, keinen Fahrer.
+        - Bulmor-Fahrten → nur aus _nacht_bulmor zuweisen.
+        - Sauberkeit Station → aus allen _nacht_mitarbeiter.
+        """
+        import random
+
+        if not self._dienstplan_geladen:
+            QMessageBox.warning(
+                self, "Kein Dienstplan",
+                "Bitte zuerst einen Dienstplan laden,\n"
+                "damit die Mitarbeiterlisten bekannt sind."
+            )
+            return
+
+        # Bulmor-Fahrzeuge mit Status 'ausser_dienst' ermitteln
+        bulmor_ad: set[str] = set()
+        try:
+            from functions.fahrzeug_functions import lade_alle_fahrzeuge
+            fahrzeuge = lade_alle_fahrzeuge()
+            for bulmor_name in _BULMOR_AUFGABEN:
+                kz_teil = bulmor_name.split("-")[-1].strip()  # z.B. "7312"
+                for fz in fahrzeuge:
+                    if kz_teil in str(fz.get("kennzeichen", "")):
+                        if fz.get("aktueller_status") == "ausser_dienst":
+                            bulmor_ad.add(bulmor_name)
+                        break
+        except Exception:
+            pass
+
+        # Aufgaben die bei Nacht nie besetzt werden
+        KEINE_NACHT = {"BTW Check + Sauberkeit", "E-mobby Check"}
+
+        # Bulmor-Fahrer-Pool (geshuffelt, rückläufig wenn nötig)
+        bulmor_pool = list(self._nacht_bulmor)
+        if not bulmor_pool:
+            bulmor_pool = list(self._nacht_mitarbeiter)  # Fallback
+        random.shuffle(bulmor_pool)
+        bulmor_iter_list = list(bulmor_pool)  # wird bei Erschöpfung neu befüllt
+        bulmor_used: list[str] = []
+
+        # Allgemein-Pool (Sauberkeit Station)
+        alle_pool = list(self._nacht_mitarbeiter)
+        random.shuffle(alle_pool)
+        alle_used: list[str] = []
+
+        def _pick_bulmor() -> str | None:
+            """Nächsten Bulmor-Fahrer aus Pool; bei Erschöpfung Pool neu mischen."""
+            nonlocal bulmor_iter_list, bulmor_used
+            available = [m for m in bulmor_iter_list if m not in bulmor_used]
+            if not available:
+                # Alle wurden einmal vergeben → von vorne anfangen
+                bulmor_used = []
+                random.shuffle(bulmor_iter_list)
+                available = bulmor_iter_list
+            if not available:
+                return None
+            chosen = available[0]
+            bulmor_used.append(chosen)
+            return chosen
+
+        def _pick_alle() -> str | None:
+            available = [m for m in alle_pool if m not in alle_used]
+            if not available:
+                alle_used.clear()
+                random.shuffle(alle_pool)
+                available = alle_pool
+            if not available:
+                return None
+            chosen = available[0]
+            alle_used.append(chosen)
+            return chosen
+
+        def _set_entry(combo: QComboBox, line: QLineEdit, text: str):
+            """Combo + Textfeld direkt setzen ohne Signal-Kaskade."""
+            combo.blockSignals(True)
+            idx = combo.findText(text)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+            line.setText(text)
+
+        for key, entry in self._entries.items():
+            if not key.endswith("_nacht"):
+                continue
+
+            aufgabe = key[: -len("_nacht")]
+
+            # BTW Check + E-Mobby Check → bei Nacht freilassen
+            if aufgabe in KEINE_NACHT:
+                combo: QComboBox = entry["combo"]
+                line: QLineEdit = entry["line"]
+                combo.blockSignals(True)
+                combo.setCurrentIndex(0)  # "— bitte wählen —"
+                combo.blockSignals(False)
+                line.clear()
+                continue
+
+            combo = entry["combo"]
+            line  = entry["line"]
+            nur_bulmor = entry.get("nur_bulmor", False)
+
+            if nur_bulmor:
+                # Bulmor a.D. → 'a.D.' eintragen
+                if aufgabe in bulmor_ad:
+                    _set_entry(combo, line, "a.D.")
+                    continue
+                chosen = _pick_bulmor()
+                if chosen:
+                    _set_entry(combo, line, chosen)
+            else:
+                # Sauberkeit Station
+                chosen = _pick_alle()
+                if chosen:
+                    _set_entry(combo, line, chosen)
 
     # ── Refresh (wird beim Tab-Wechsel aufgerufen) ──────────────────────────
 
