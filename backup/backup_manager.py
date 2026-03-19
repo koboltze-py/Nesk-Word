@@ -5,6 +5,7 @@ Enthält außerdem Funktionen für ZIP-Backups und ZIP-Restore des gesamten Nesk
 """
 import os
 import sys
+import glob
 import json
 import shutil
 import zipfile
@@ -64,6 +65,170 @@ def _cleanup_old_backups(backup_dir: str):
     )
     while len(files) > BACKUP_MAX_KEEP:
         os.remove(os.path.join(backup_dir, files.pop(0)))
+
+
+# ---------------------------------------------------------------------------
+# Automatische Startup-DB-Backups (SQLite .db-Dateien, täglich angelegt)
+# Speicherort: database SQL/Backup Data/db_backups/YYYY-MM-DD/
+# ---------------------------------------------------------------------------
+
+def _db_backup_root() -> str:
+    from config import DB_PATH
+    return os.path.join(os.path.dirname(DB_PATH), "Backup Data", "db_backups")
+
+
+def _format_datum(tag: str) -> str:
+    try:
+        return datetime.strptime(tag, "%Y-%m-%d").strftime("%d.%m.%Y")
+    except Exception:
+        return tag
+
+
+def _snapshots_fuer_tag(tag_pfad: str) -> list[dict]:
+    """Gibt alle Snapshots (Zeitstempel-Gruppen) eines Tages zurück."""
+    snapshots: dict[str, dict] = {}
+    for f in sorted(glob.glob(os.path.join(tag_pfad, "*.db"))):
+        fname = os.path.basename(f)
+        # Kein _wiederherstellung-Unterordner
+        parts = fname.rsplit("_", 1)
+        if len(parts) != 2:
+            continue
+        ts_raw = parts[1].replace(".db", "")
+        if len(ts_raw) != 6 or not ts_raw.isdigit():
+            continue
+        uhrzeit = f"{ts_raw[0:2]}:{ts_raw[2:4]} Uhr"
+        if ts_raw not in snapshots:
+            snapshots[ts_raw] = {"zeit": uhrzeit, "ts": ts_raw, "dateien": []}
+        snapshots[ts_raw]["dateien"].append({
+            "name": parts[0],
+            "pfad": f,
+            "groesse_kb": round(os.path.getsize(f) / 1024, 1),
+        })
+    return sorted(snapshots.values(), key=lambda x: x["ts"])
+
+
+def list_db_backups() -> list[dict]:
+    """
+    Listet alle automatisch angelegten Startup-DB-Backups auf.
+    Gibt eine Liste von Tages-Einträgen (neueste zuerst) zurück.
+    """
+    basis = _db_backup_root()
+    if not os.path.isdir(basis):
+        return []
+    result = []
+    for tag in sorted(os.listdir(basis), reverse=True):
+        tag_pfad = os.path.join(basis, tag)
+        # Nur echte Tages-Ordner (YYYY-MM-DD), keine _wiederherstellung etc.
+        if not os.path.isdir(tag_pfad) or len(tag) != 10 or tag.count("-") != 2:
+            continue
+        db_dateien = glob.glob(os.path.join(tag_pfad, "*.db"))
+        if not db_dateien:
+            continue
+        gesamt = sum(os.path.getsize(f) for f in db_dateien)
+        snapshots = _snapshots_fuer_tag(tag_pfad)
+        db_namen = {os.path.basename(f).rsplit("_", 1)[0] for f in db_dateien}
+        result.append({
+            "datum":             tag,
+            "datum_anzeige":     _format_datum(tag),
+            "pfad":              tag_pfad,
+            "anzahl_dbs":        len(db_namen),
+            "anzahl_snapshots":  len(snapshots),
+            "groesse_mb":        round(gesamt / (1024 * 1024), 1),
+            "snapshots":         snapshots,
+        })
+    return result
+
+
+def restore_db_backup_as_copy(tag_pfad: str, ts: str | None = None) -> dict:
+    """
+    Kopiert DB-Backup-Dateien eines Snapshots in einen geschützten Unterordner.
+    Die Live-Datenbanken werden NICHT verändert.
+    Turso hat keinen Zugriff auf diesen Ordner.
+
+    Parameters
+    ----------
+    tag_pfad : Pfad zum Tages-Ordner des Backups
+    ts       : Zeitstempel (HHMMSS) des gewünschten Snapshots; None = neuester
+
+    Returns
+    -------
+    dict mit {'erfolg', 'ziel', 'anzahl', 'meldung'}
+    """
+    if ts is None:
+        # Neuesten Snapshot bestimmen
+        alle = sorted(glob.glob(os.path.join(tag_pfad, "*.db")))
+        if not alle:
+            return {"erfolg": False, "ziel": "", "anzahl": 0, "meldung": "Keine Backup-Dateien gefunden."}
+        letzter_ts = os.path.basename(alle[-1]).rsplit("_", 1)[-1].replace(".db", "")
+        if len(letzter_ts) != 6:
+            return {"erfolg": False, "ziel": "", "anzahl": 0, "meldung": "Zeitstempel ungültig."}
+        ts = letzter_ts
+
+    muster = glob.glob(os.path.join(tag_pfad, f"*_{ts}.db"))
+    if not muster:
+        return {"erfolg": False, "ziel": "", "anzahl": 0, "meldung": f"Snapshot {ts} nicht gefunden."}
+
+    # Zielordner: _wiederherstellung/<YYYY-MM-DD_HHMMSS>/
+    tag_name = os.path.basename(tag_pfad)
+    ziel_basis = os.path.join(_db_backup_root(), "_wiederherstellung")
+    ziel_name  = f"{tag_name}_{ts}"
+    ziel_ordner = os.path.join(ziel_basis, ziel_name)
+
+    if os.path.exists(ziel_ordner):
+        # Bereits kopiert – einfach Pfad zurückgeben
+        vorh = glob.glob(os.path.join(ziel_ordner, "*.db"))
+        return {
+            "erfolg": True, "ziel": ziel_ordner, "anzahl": len(vorh),
+            "meldung": (
+                f"Kopie bereits vorhanden ({len(vorh)} Datenbank-Datei(en)).\n\n"
+                f"Speicherort:\n{ziel_ordner}\n\n"
+                "Die Live-Datenbanken wurden NICHT verändert."
+            ),
+        }
+
+    os.makedirs(ziel_ordner, exist_ok=True)
+    kopiert = 0
+    for src in sorted(muster):
+        fname  = os.path.basename(src)
+        # name_HHMMSS.db  →  name.db
+        teile  = fname.rsplit("_", 1)
+        zielname = teile[0] + ".db" if len(teile) == 2 else fname
+        shutil.copy2(src, os.path.join(ziel_ordner, zielname))
+        kopiert += 1
+
+    uhrzeit = f"{ts[0:2]}:{ts[2:4]} Uhr"
+    return {
+        "erfolg": True,
+        "ziel":   ziel_ordner,
+        "anzahl": kopiert,
+        "meldung": (
+            f"{kopiert} Datenbank-Kopie(n) vom {_format_datum(tag_name)} {uhrzeit} gesichert.\n\n"
+            f"Speicherort (kein Turso-Zugriff):\n{ziel_ordner}\n\n"
+            "Die Live-Datenbanken wurden NICHT verändert.\n"
+            "Im Notfall können die Dateien von dort manuell zurückgespielt werden."
+        ),
+    }
+
+
+def list_restored_copies() -> list[dict]:
+    """Listet alle bereits erstellten Wiederherstellungs-Kopien auf."""
+    basis = os.path.join(_db_backup_root(), "_wiederherstellung")
+    if not os.path.isdir(basis):
+        return []
+    result = []
+    for name in sorted(os.listdir(basis), reverse=True):
+        pfad = os.path.join(basis, name)
+        if not os.path.isdir(pfad):
+            continue
+        dateien = glob.glob(os.path.join(pfad, "*.db"))
+        groesse = sum(os.path.getsize(f) for f in dateien)
+        result.append({
+            "name":       name,
+            "pfad":       pfad,
+            "anzahl":     len(dateien),
+            "groesse_mb": round(groesse / (1024 * 1024), 1),
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------

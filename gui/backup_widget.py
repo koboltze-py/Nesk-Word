@@ -10,9 +10,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QMessageBox, QGroupBox, QListWidget, QListWidgetItem,
-    QProgressDialog
+    QProgressDialog, QTreeWidget, QTreeWidgetItem, QScrollArea, QSizePolicy
 )
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor
 from PySide6.QtCore import Qt, QThread, Signal
 
 from config import FIORI_BLUE, FIORI_TEXT, FIORI_SUCCESS, FIORI_ERROR
@@ -64,7 +64,18 @@ class BackupWidget(QWidget):
         self._load_backups()
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
+        # Scroll-Container damit das Widget bei vielen Sektionen scrollbar ist
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer.addWidget(scroll)
+
+        inner = QWidget()
+        scroll.setWidget(inner)
+        layout = QVBoxLayout(inner)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -85,7 +96,10 @@ class BackupWidget(QWidget):
         
         # ── SQL-Datenbanken Backup Gruppe ──────────────────────────────
         self._build_sql_databases_group(layout)
-        
+
+        # ── Automatische DB-Backups (Startup) ─────────────────────────
+        self._build_db_backups_group(layout)
+
         # ── Nesk3 Code Backup Gruppe ───────────────────────────────────
         self._build_nesk3_group(layout)
 
@@ -311,6 +325,154 @@ class BackupWidget(QWidget):
 
         parent_layout.addWidget(grp)
 
+    def _build_db_backups_group(self, parent_layout):
+        """Automatische Startup-DB-Backups: anzeigen und als Kopie laden."""
+        grp = QGroupBox("🗄️ Automatische DB-Backups (7 Tage)")
+        grp.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        grp.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #dce8f5;
+                border-radius: 6px;
+                margin-top: 8px;
+                padding: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 6px;
+                color: #0a5ba4;
+            }
+        """)
+        grp_layout = QVBoxLayout(grp)
+        grp_layout.setSpacing(10)
+
+        hinweis = QLabel(
+            "Beim Start der App werden automatisch alle Datenbanken gesichert (bis zu 7 Tage, 5× pro Tag).\n"
+            "Mit 'Backup-Kopie erstellen' werden die Dateien in einen geschützten Ordner kopiert –\n"
+            "die Live-Datenbanken und Turso-Sync werden dabei NICHT verändert."
+        )
+        hinweis.setWordWrap(True)
+        hinweis.setStyleSheet("color: #555; font-size: 11px; font-weight: normal;")
+        grp_layout.addWidget(hinweis)
+
+        self._db_backup_tree = QTreeWidget()
+        self._db_backup_tree.setHeaderLabels(["Datum / Uhrzeit", "Datenbanken", "Größe"])
+        self._db_backup_tree.setColumnWidth(0, 220)
+        self._db_backup_tree.setColumnWidth(1, 100)
+        self._db_backup_tree.setMaximumHeight(260)
+        self._db_backup_tree.setStyleSheet("""
+            QTreeWidget {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background: white;
+                font-size: 11px;
+            }
+            QTreeWidget::item { padding: 4px; border-bottom: 1px solid #f0f0f0; }
+            QTreeWidget::item:hover { background: #f5f8fa; }
+            QTreeWidget::item:selected { background: #dce8f5; color: #000; }
+        """)
+        grp_layout.addWidget(self._db_backup_tree)
+
+        btn_row = QHBoxLayout()
+
+        refresh_btn = QPushButton("🔄 Aktualisieren")
+        refresh_btn.setMaximumWidth(150)
+        refresh_btn.clicked.connect(self._load_db_backups)
+        btn_row.addWidget(refresh_btn)
+
+        btn_row.addStretch()
+
+        copy_btn = QPushButton("📋 Backup-Kopie erstellen")
+        copy_btn.setMinimumHeight(32)
+        copy_btn.setStyleSheet(
+            f"background-color: {FIORI_BLUE}; color: white; border-radius: 4px; "
+            "font-weight: bold; padding: 4px 14px;"
+        )
+        copy_btn.setToolTip(
+            "Kopiert die Dateien des gewählten Snapshots in einen sicheren Ordner.\n"
+            "Live-Datenbanken werden NICHT verändert."
+        )
+        copy_btn.clicked.connect(self._create_db_backup_copy)
+        btn_row.addWidget(copy_btn)
+
+        grp_layout.addLayout(btn_row)
+        parent_layout.addWidget(grp)
+
+    def _load_db_backups(self):
+        """Füllt den DB-Backup-Baum."""
+        self._db_backup_tree.clear()
+        backups = backup_manager.list_db_backups()
+        if not backups:
+            item = QTreeWidgetItem(["Noch keine Backups vorhanden", "", ""])
+            item.setForeground(0, QColor("#999"))
+            self._db_backup_tree.addTopLevelItem(item)
+            return
+
+        for eintrag in backups:
+            root = QTreeWidgetItem([
+                f"📅 {eintrag['datum_anzeige']}",
+                f"{eintrag['anzahl_dbs']} DB(s)",
+                f"{eintrag['groesse_mb']} MB",
+            ])
+            root.setFont(0, QFont("Arial", 10, QFont.Weight.Bold))
+            root.setData(0, Qt.ItemDataRole.UserRole, {"typ": "tag", "pfad": eintrag["pfad"]})
+            for snap in eintrag["snapshots"]:
+                db_namen = ", ".join(s["name"] for s in snap["dateien"])
+                child = QTreeWidgetItem([
+                    f"  🕐 {snap['zeit']}",
+                    f"{len(snap['dateien'])} DB(s)",
+                    "",
+                ])
+                child.setToolTip(0, db_namen)
+                child.setData(0, Qt.ItemDataRole.UserRole, {
+                    "typ": "snapshot",
+                    "pfad": eintrag["pfad"],
+                    "ts":   snap["ts"],
+                    "zeit": snap["zeit"],
+                    "datum_anzeige": eintrag["datum_anzeige"],
+                })
+                root.addChild(child)
+            self._db_backup_tree.addTopLevelItem(root)
+        self._db_backup_tree.expandAll()
+
+    def _create_db_backup_copy(self):
+        """Erstellt eine Backup-Kopie des gewählten Snapshots."""
+        item = self._db_backup_tree.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Keine Auswahl",
+                                "Bitte wählen Sie einen Snapshot (Uhrzeit-Eintrag) oder einen Tag aus.")
+            return
+
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+
+        pfad = data["pfad"]
+        ts   = data.get("ts")          # None bei Tages-Auswahl → neuester Snapshot
+        info = data.get("zeit", "neuester Snapshot")
+        datum = data.get("datum_anzeige", "")
+
+        antwort = QMessageBox.question(
+            self,
+            "Backup-Kopie erstellen",
+            f"Backup-Kopie erstellen für:\n\n"
+            f"  Datum: {datum}\n"
+            f"  Snapshot: {info}\n\n"
+            "Die Kopie wird in einem geschützten Ordner abgelegt.\n"
+            "Die Live-Datenbanken werden NICHT verändert.\n\n"
+            "Fortfahren?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if antwort != QMessageBox.StandardButton.Yes:
+            return
+
+        ergebnis = backup_manager.restore_db_backup_as_copy(pfad, ts)
+        if ergebnis["erfolg"]:
+            QMessageBox.information(self, "Backup-Kopie erstellt", ergebnis["meldung"])
+        else:
+            QMessageBox.critical(self, "Fehler", ergebnis["meldung"])
+
     def _build_nesk3_group(self, parent_layout):
         """Erstellt die Nesk3 Code Backup Sektion."""
         grp = QGroupBox("💻 Nesk3 Code Backup")
@@ -439,6 +601,9 @@ class BackupWidget(QWidget):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setForeground(Qt.GlobalColor.gray)
             self._nesk3_list.addItem(item)
+
+        # Automatische DB-Backups
+        self._load_db_backups()
 
     def _create_gemeinsam_backup(self):
         """Erstellt ein inkrementelles Gemeinsam.26 Backup."""

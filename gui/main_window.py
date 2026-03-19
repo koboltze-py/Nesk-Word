@@ -32,6 +32,7 @@ from gui.hilfe_dialog           import HilfeDialog
 from gui.dienstliches           import DienstlichesWidget
 from gui.telefonnummern         import TelefonnummernWidget
 from gui.call_transcription     import CallTranscriptionWidget
+from gui.backup_widget          import BackupWidget
 
 
 NAV_ITEMS = [
@@ -265,7 +266,7 @@ class MainWindow(QMainWindow):
         self._telefonnummern_page = TelefonnummernWidget()
 
         self._call_transcription_page = CallTranscriptionWidget()
-        self._backup_page        = self._placeholder_page("💾 Backup", "Backup-Verwaltung wird implementiert.")
+        self._backup_page        = BackupWidget()
         self._settings_page      = EinstellungenWidget()
 
         for page in [self._dashboard_page, self._mitarbeiter_page,
