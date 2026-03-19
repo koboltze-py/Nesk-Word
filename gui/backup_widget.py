@@ -275,52 +275,64 @@ class BackupWidget(QWidget):
         sql_backup_btn.clicked.connect(self._create_sql_databases_backup)
         grp_layout.addWidget(sql_backup_btn)
 
-        # Backup-Liste
+        # Backup-Liste als Baum (Tage → Snapshots)
         list_label = QLabel("Vorhandene SQL-Backups:")
         list_label.setStyleSheet("font-weight: bold; font-size: 11px; margin-top: 8px;")
         grp_layout.addWidget(list_label)
 
-        self._sql_list = QListWidget()
-        self._sql_list.setMaximumHeight(150)
-        self._sql_list.setStyleSheet("""
-            QListWidget {
+        hinweis_sql = QLabel("Wählen Sie einen Uhrzeit-Eintrag für gezielten Snapshot-Restore, oder den Tag für den neuesten Snapshot.")
+        hinweis_sql.setWordWrap(True)
+        hinweis_sql.setStyleSheet("color: #555; font-size: 10px; font-weight: normal;")
+        grp_layout.addWidget(hinweis_sql)
+
+        self._sql_tree = QTreeWidget()
+        self._sql_tree.setHeaderLabels(["Datum / Uhrzeit", "Datenbanken", "Größe"])
+        self._sql_tree.setColumnWidth(0, 200)
+        self._sql_tree.setColumnWidth(1, 100)
+        self._sql_tree.setMaximumHeight(180)
+        self._sql_tree.setStyleSheet("""
+            QTreeWidget {
                 border: 1px solid #ddd;
                 border-radius: 4px;
                 background: white;
                 font-size: 11px;
             }
-            QListWidget::item {
-                padding: 6px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QListWidget::item:hover {
-                background: #f5f8fa;
-            }
+            QTreeWidget::item { padding: 4px; border-bottom: 1px solid #f0f0f0; }
+            QTreeWidget::item:hover { background: #f5f8fa; }
+            QTreeWidget::item:selected { background: #dce8f5; color: #000; }
         """)
-        grp_layout.addWidget(self._sql_list)
+        grp_layout.addWidget(self._sql_tree)
 
         # Backup-Listen Buttons
         list_btn_row = QHBoxLayout()
-        
+
         refresh_btn = QPushButton("🔄 Aktualisieren")
         refresh_btn.setMaximumWidth(150)
         refresh_btn.clicked.connect(self._load_backups)
         list_btn_row.addWidget(refresh_btn)
-        
+
         list_btn_row.addStretch()
-        
+
         restore_btn = QPushButton("♻️ Wiederherstellen")
-        restore_btn.setMaximumWidth(150)
-        restore_btn.setStyleSheet(f"background-color: {FIORI_BLUE}; color: white; border-radius: 4px; padding: 4px 8px;")
+        restore_btn.setMinimumHeight(32)
+        restore_btn.setStyleSheet(
+            f"background-color: {FIORI_BLUE}; color: white; border-radius: 4px; "
+            "font-weight: bold; padding: 4px 14px;"
+        )
+        restore_btn.setToolTip(
+            "Snapshot auswählen und wiederherstellen.\n"
+            "Tages-Auswahl → neuester Snapshot des Tages."
+        )
         restore_btn.clicked.connect(self._restore_sql_backup)
         list_btn_row.addWidget(restore_btn)
-        
+
         delete_btn = QPushButton("🗑️ Löschen")
         delete_btn.setMaximumWidth(120)
         delete_btn.setStyleSheet(f"color: {FIORI_ERROR};")
+        delete_btn.setToolTip("Gesamten Tages-Ordner löschen (nur bei Tages-Auswahl).")
         delete_btn.clicked.connect(self._delete_sql_backup)
         list_btn_row.addWidget(delete_btn)
-        
+
         grp_layout.addLayout(list_btn_row)
 
         parent_layout.addWidget(grp)
@@ -572,20 +584,47 @@ class BackupWidget(QWidget):
             item.setForeground(Qt.GlobalColor.gray)
             self._gemeinsam_list.addItem(item)
 
-        # SQL-Datenbank Backups
-        self._sql_list.clear()
+        # SQL-Datenbank Backups (Baum: Tage → Snapshots)
+        self._sql_tree.clear()
         sql_backups = backup_manager.list_sql_backups()
-        for backup in sql_backups:
-            item_text = f"🗄️ {backup['datum_anzeige']} | {backup['anzahl_dbs']} DB(s) | {backup['anzahl_snapshots']} Snapshots | {backup['groesse_mb']} MB"
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, backup)
-            self._sql_list.addItem(item)
-        
         if not sql_backups:
-            item = QListWidgetItem("Noch keine Backups vorhanden")
-            item.setFlags(Qt.ItemFlag.NoItemFlags)
-            item.setForeground(Qt.GlobalColor.gray)
-            self._sql_list.addItem(item)
+            empty = QTreeWidgetItem(["Noch keine Backups vorhanden", "", ""])
+            empty.setForeground(0, QColor("#999"))
+            self._sql_tree.addTopLevelItem(empty)
+        else:
+            for eintrag in sql_backups:
+                root = QTreeWidgetItem([
+                    f"📅 {eintrag['datum_anzeige']}",
+                    f"{eintrag['anzahl_dbs']} DB(s)",
+                    f"{eintrag['groesse_mb']} MB",
+                ])
+                root.setFont(0, QFont("Arial", 10, QFont.Weight.Bold))
+                root.setData(0, Qt.ItemDataRole.UserRole, {
+                    "typ": "tag",
+                    "pfad": eintrag["pfad"],
+                    "datum_anzeige": eintrag["datum_anzeige"],
+                    "anzahl_dbs": eintrag["anzahl_dbs"],
+                    "anzahl_snapshots": eintrag["anzahl_snapshots"],
+                })
+                for snap in eintrag["snapshots"]:
+                    db_namen = ", ".join(s["name"] for s in snap["dateien"])
+                    child = QTreeWidgetItem([
+                        f"  🕐 {snap['zeit']}",
+                        f"{len(snap['dateien'])} DB(s)",
+                        "",
+                    ])
+                    child.setToolTip(0, db_namen)
+                    child.setData(0, Qt.ItemDataRole.UserRole, {
+                        "typ": "snapshot",
+                        "pfad": eintrag["pfad"],
+                        "ts": snap["ts"],
+                        "zeit": snap["zeit"],
+                        "datum_anzeige": eintrag["datum_anzeige"],
+                        "anzahl_dbs": len(snap["dateien"]),
+                    })
+                    root.addChild(child)
+                self._sql_tree.addTopLevelItem(root)
+            self._sql_tree.expandAll()
 
         # Nesk3 Backups
         self._nesk3_list.clear()
@@ -711,32 +750,41 @@ class BackupWidget(QWidget):
 
     def _restore_sql_backup(self):
         """Stellt ein SQL-Datenbank-Backup wieder her."""
-        selected = self._sql_list.currentItem()
-        if not selected or not selected.data(Qt.ItemDataRole.UserRole):
-            QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie ein Backup aus.")
+        item = self._sql_tree.currentItem()
+        if not item or not item.data(0, Qt.ItemDataRole.UserRole):
+            QMessageBox.warning(self, "Keine Auswahl",
+                                "Bitte wählen Sie einen Snapshot (Uhrzeit-Eintrag) oder einen Tag aus.")
             return
 
-        backup = selected.data(Qt.ItemDataRole.UserRole)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        pfad = data["pfad"]
+        ts   = data.get("ts")   # None bei Tages-Auswahl → neuester Snapshot
+        info = data.get("zeit", "neuester Snapshot")
+        datum = data.get("datum_anzeige", "")
+        anzahl_dbs = data.get("anzahl_dbs", "?")
+
         reply = QMessageBox.warning(
             self,
             "Datenbank wiederherstellen",
             f"⚠️ WARNUNG ⚠️\n\n"
-            f"Möchten Sie wirklich das Backup vom {backup['datum_anzeige']} wiederherstellen?\n\n"
+            f"Möchten Sie wirklich diesen Snapshot wiederherstellen?\n\n"
+            f"  Datum:    {datum}\n"
+            f"  Snapshot: {info}\n"
+            f"  DBs:      {anzahl_dbs}\n\n"
             f"Dies überschreibt ALLE aktuellen Datenbanken!\n"
-            f"Es wird empfohlen, vorher ein neues Backup zu erstellen.\n\n"
-            f"Backup enthält {backup['anzahl_dbs']} Datenbank(en) ({backup['anzahl_snapshots']} Snapshots).",
+            f"Es wird empfohlen, vorher ein neues Backup zu erstellen.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                ergebnis = backup_manager.restore_sql_backup(backup['pfad'])
+                ergebnis = backup_manager.restore_sql_backup(pfad, ts)
                 if ergebnis.get('erfolg'):
                     QMessageBox.information(
                         self,
                         "Wiederherstellung erfolgreich",
-                        f"Backup vom {backup['datum_anzeige']} wurde wiederhergestellt.\n\n"
+                        f"Snapshot '{info}' vom {datum} wurde wiederhergestellt.\n\n"
                         f"{ergebnis['meldung']}\n\n"
                         f"Bitte starten Sie die Anwendung neu, damit die Änderungen wirksam werden."
                     )
@@ -746,25 +794,36 @@ class BackupWidget(QWidget):
                 QMessageBox.critical(self, "Fehler", f"Fehler bei Wiederherstellung: {str(e)}")
 
     def _delete_sql_backup(self):
-        """Löscht das ausgewählte SQL-Datenbank-Backup."""
-        selected = self._sql_list.currentItem()
-        if not selected or not selected.data(Qt.ItemDataRole.UserRole):
-            QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie ein Backup aus.")
+        """Löscht den gesamten Tages-Ordner des ausgewählten Eintrags."""
+        item = self._sql_tree.currentItem()
+        if not item or not item.data(0, Qt.ItemDataRole.UserRole):
+            QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie einen Tages-Eintrag aus.")
             return
 
-        backup = selected.data(Qt.ItemDataRole.UserRole)
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        # Löschen nur auf Tages-Ebene erlauben (nicht einzelner Snapshot)
+        if data.get("typ") == "snapshot":
+            QMessageBox.information(self, "Hinweis",
+                "Einzelne Snapshots können nicht separat gelöscht werden.\n"
+                "Bitte wählen Sie den übergeordneten Tages-Eintrag (📅), um den gesamten Tag zu löschen.")
+            return
+
+        pfad = data["pfad"]
+        datum = data.get("datum_anzeige", "")
+        anzahl = data.get("anzahl_snapshots", "?")
+
         reply = QMessageBox.question(
             self,
             "Backup löschen",
-            f"Möchten Sie das SQL-Backup vom '{backup['datum_anzeige']}' wirklich löschen?\n\n"
-            f"Alle {backup['anzahl_snapshots']} Snapshot(s) dieses Tages werden gelöscht.",
+            f"Möchten Sie alle Backups vom '{datum}' wirklich löschen?\n\n"
+            f"Alle {anzahl} Snapshot(s) dieses Tages werden gelöscht.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                shutil.rmtree(backup['pfad'])
-                QMessageBox.information(self, "Gelöscht", f"Backup vom {backup['datum_anzeige']} wurde gelöscht.")
+                shutil.rmtree(pfad)
+                QMessageBox.information(self, "Gelöscht", f"Backup vom {datum} wurde gelöscht.")
                 self._load_backups()
             except Exception as e:
                 QMessageBox.critical(self, "Fehler", f"Fehler beim Löschen: {str(e)}")
