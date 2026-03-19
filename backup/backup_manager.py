@@ -26,6 +26,30 @@ def _lp(p: str) -> str:
     return p
 
 
+def _rmtree_lp(path: str):
+    """
+    shutil.rmtree mit Long-Path-Unterstützung.
+    Behandelt Unterverzeichnisse mit Pfaden > 260 Zeichen korrekt.
+    """
+    for root, dirs, files in os.walk(path, topdown=False):
+        for f in files:
+            fp = os.path.join(root, f)
+            try:
+                os.remove(_lp(fp))
+            except Exception:
+                pass
+        for d in dirs:
+            dp = os.path.join(root, d)
+            try:
+                os.rmdir(_lp(dp))
+            except Exception:
+                pass
+    try:
+        os.rmdir(_lp(path))
+    except Exception:
+        pass
+
+
 def _ensure_backup_dir() -> str:
     """Erstellt das Backup-Verzeichnis falls nicht vorhanden."""
     path = os.path.join(BASE_DIR, BACKUP_DIR)
@@ -333,7 +357,7 @@ def create_gemeinsam_backup(inkrementell: bool = True, progress_callback=None) -
     if kopiert == 0 and uebersprungen > 0:
         # Nichts Neues → leeren Ordner wieder entfernen
         try:
-            shutil.rmtree(ziel)
+            _rmtree_lp(ziel)
         except Exception:
             pass
         return {
@@ -352,7 +376,17 @@ def create_gemeinsam_backup(inkrementell: bool = True, progress_callback=None) -
         meldung += "\n\nNicht kopiert (Pfad zu lang oder Zugriffsfehler):\n" + "\n".join(f"  • {f}" for f in fehler_liste[:10])
         if len(fehler_liste) > 10:
             meldung += f"\n  ... und {len(fehler_liste) - 10} weitere"
-
+    # Rotation: max. 10 Backup-Ordner behalten
+    alle = sorted([
+        d for d in os.listdir(_GEMEINSAM_BACKUP_DIR)
+        if os.path.isdir(os.path.join(_GEMEINSAM_BACKUP_DIR, d))
+        and d.startswith('gemeinsam_')
+    ])
+    for alter in alle[:-10]:
+        try:
+            _rmtree_lp(os.path.join(_GEMEINSAM_BACKUP_DIR, alter))
+        except Exception:
+            pass
     return {
         "erfolg": True,
         "dateien_count": kopiert,
@@ -449,7 +483,7 @@ def create_sql_databases_backup(progress_callback=None) -> dict:
     ])
     for alter_tag in alle_tage[:-7]:
         try:
-            shutil.rmtree(os.path.join(basis, alter_tag))
+            _rmtree_lp(os.path.join(basis, alter_tag))
         except Exception:
             pass
 
@@ -736,7 +770,7 @@ def _drk_rotate(basis: str, datum_str: str, zip_prefix: str, max_pro_tag: int = 
     ])
     for alter_tag in alle_tage[:-max_tage]:
         try:
-            shutil.rmtree(os.path.join(basis, alter_tag))
+            _rmtree_lp(os.path.join(basis, alter_tag))
         except Exception:
             pass
 
