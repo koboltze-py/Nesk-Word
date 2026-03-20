@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QComboBox, QLineEdit, QTextEdit,
     QFrame, QScrollArea, QSizePolicy, QMessageBox, QFileDialog,
     QGroupBox, QTreeView, QSplitter, QFileSystemModel, QMenu,
+    QInputDialog,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -886,18 +887,21 @@ class SonderaufgabenWidget(QWidget):
             )
             return
 
-        antwort = QMessageBox.question(
-            self, "Drucken",
-            f"Datei drucken?\n\n{saved.name}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
+        anzahl, ok = QInputDialog.getInt(
+            self,
+            "Anzahl Ausdrucke",
+            f"Wie viele Ausdrucke sollen gedruckt werden?\n\n{saved.name}",
+            value=1, min=1, max=20, step=1
         )
-        if antwort == QMessageBox.StandardButton.Yes:
-            try:
-                import os as _os
+        if not ok:
+            return
+
+        try:
+            import os as _os
+            for _ in range(anzahl):
                 _os.startfile(str(saved), "print")
-            except Exception as exc:
-                QMessageBox.critical(self, "Fehler", f"Drucken fehlgeschlagen:\n{exc}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Fehler", f"Drucken fehlgeschlagen:\n{exc}")
 
     # ── Dateibaum ────────────────────────────────────────────────────────────
 
