@@ -2518,25 +2518,62 @@ class UebergabeWidget(QWidget):
             # Einsätze in Body einbauen
             _checked_einz = [(_cb, _e) for _cb, _e in _einsatz_checkboxes if _cb.isChecked()]
             if _checked_einz:
-                _einz_lines = ["", "─" * 38, "🚑 Einsätze:", "─" * 38]
-                for _, _e in _checked_einz:
-                    _ang = "✅ angenommen" if _e.get("angenommen") else "❌ abgelehnt"
-                    _stw = _e.get("einsatzstichwort", "") or "—"
-                    _ort = _e.get("einsatzort", "") or "—"
-                    _uhr = _e.get("uhrzeit", "") or "—"
-                    _dur = _e.get("einsatzdauer", 0) or 0
-                    _ma1 = _e.get("drk_ma1", "") or ""
-                    _ma2 = _e.get("drk_ma2", "") or ""
-                    _ma_txt = f"  MA: {', '.join(filter(None, [_ma1, _ma2]))}" if (_ma1 or _ma2) else ""
-                    _nr = _e.get("einsatznr_drk", "") or ""
-                    _nr_txt = f"  Nr.: {_nr}" if _nr else ""
-                    _dur_txt = f"  Dauer: {_dur} Min." if _dur else ""
-                    _einz_lines.append(
-                        f"  • {_uhr}  |  {_stw}  |  {_ort}  |  {_ang}{_nr_txt}{_ma_txt}{_dur_txt}"
+                _td = "style='padding:5px 10px;border:1px solid #c8e6c9;font-size:10pt;'"
+                _th = "style='padding:5px 10px;border:1px solid #81c784;background:#e8f5e9;font-weight:bold;font-size:10pt;'"
+                _einz_html = (
+                    "<br><hr style='border:none;border-top:2px solid #5a9060;margin:14px 0'>"
+                    "<b style='font-size:11pt;'>🚑 Einsätze</b><br><br>"
+                    f"<table style='border-collapse:collapse;font-family:Calibri,Arial,sans-serif;'>"
+                    f"<tr>"
+                    f"<th {_th}>Datum</th>"
+                    f"<th {_th}>Uhrzeit</th>"
+                    f"<th {_th}>Stichwort</th>"
+                    f"<th {_th}>Einsatzort</th>"
+                    f"<th {_th}>Status</th>"
+                    f"<th {_th}>DRK-Nr.</th>"
+                    f"<th {_th}>Mitarbeiter</th>"
+                    f"<th {_th}>Dauer</th>"
+                    f"</tr>"
+                )
+                for _i, (_, _e) in enumerate(_checked_einz):
+                    _ang     = "✅ angenommen" if _e.get("angenommen") else "❌ abgelehnt"
+                    _ang_col = "#2e7d32" if _e.get("angenommen") else "#c62828"
+                    _dat     = _e.get("datum", "") or "—"
+                    _uhr     = _e.get("uhrzeit", "") or "—"
+                    _stw     = _e.get("einsatzstichwort", "") or "—"
+                    _ort     = _e.get("einsatzort", "") or "—"
+                    _nr      = _e.get("einsatznr_drk", "") or "—"
+                    _dur     = _e.get("einsatzdauer", 0) or 0
+                    _ma1     = _e.get("drk_ma1", "") or ""
+                    _ma2     = _e.get("drk_ma2", "") or ""
+                    _ma_txt  = ", ".join(filter(None, [_ma1, _ma2])) or "—"
+                    _dur_txt = f"{_dur}&nbsp;Min." if _dur else "—"
+                    _bg      = "background:#ffffff" if _i % 2 == 0 else "background:#f1f8e9"
+                    _td_bg   = f"style='padding:5px 10px;border:1px solid #c8e6c9;font-size:10pt;{_bg}'"
+                    _einz_html += (
+                        f"<tr>"
+                        f"<td {_td_bg}>{_dat}</td>"
+                        f"<td {_td_bg}>{_uhr}</td>"
+                        f"<td {_td_bg}>{_stw}</td>"
+                        f"<td {_td_bg}>{_ort}</td>"
+                        f"<td style='padding:5px 10px;border:1px solid #c8e6c9;font-size:10pt;"
+                        f"color:{_ang_col};font-weight:bold;{_bg}'>{_ang}</td>"
+                        f"<td {_td_bg}>{_nr}</td>"
+                        f"<td {_td_bg}>{_ma_txt}</td>"
+                        f"<td {_td_bg}>{_dur_txt}</td>"
+                        f"</tr>"
                     )
                     if _e.get("bemerkung"):
-                        _einz_lines.append(f"       Bemerkung: {_e['bemerkung']}")
-                body_text += "\n" + "\n".join(_einz_lines)
+                        _einz_html += (
+                            f"<tr><td colspan='8' style='padding:3px 10px 6px 24px;"
+                            f"border:1px solid #c8e6c9;color:#555;font-style:italic;{_bg}'>"
+                            f"💬 {_e['bemerkung']}</td></tr>"
+                        )
+                _einz_html += (
+                    f"</table>"
+                    f"<br><small style='color:#888;'>Gesamt: {len(_checked_einz)} Einsatz/Einsätze</small>"
+                )
+                body_text += _einz_html
 
             # PSA-Verstöße in Body einbauen
             _checked_psa = [(_cb, _p) for _cb, _p in _psa_checkboxes if _cb.isChecked()]
