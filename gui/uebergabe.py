@@ -1003,11 +1003,20 @@ class UebergabeWidget(QWidget):
                 item.widget().deleteLater()
         self._verspaetungen_widgets.clear()
 
-        # Read-only: Tagdienst=heute, Nachtdienst=heute (kein Vortag)
+        # Read-only: Verspätungen nach Schichttyp filtern
+        # Tagdienst  (06:00–18:00 / 07:00–19:00) → dienstbeginn 06:xx oder 07:xx
+        # Nachtdienst (18:00–06:00 / 21:00–07:00) → dienstbeginn 18:xx oder 21:xx
+        _TAG_BEGINN_H   = {"06", "07"}
+        _NACHT_BEGINN_H = {"18", "21"}
         db_eintraege: list = []
         try:
             datum_iso = self._f_datum.date().toString("yyyy-MM-dd")
             raw = lade_vsp_aus_db(datum_iso)
+            # Schicht-Filter anwenden
+            if self._aktueller_typ == "tagdienst":
+                raw = [e for e in raw if (e.get("dienstbeginn", "") or "")[:2] in _TAG_BEGINN_H]
+            elif self._aktueller_typ == "nachtdienst":
+                raw = [e for e in raw if (e.get("dienstbeginn", "") or "")[:2] in _NACHT_BEGINN_H]
             # Deduplizieren nach (mitarbeiter, dienstbeginn) – neuesten Eintrag behalten
             _seen_db: set = set()
             for _e in raw:
@@ -1065,17 +1074,29 @@ class UebergabeWidget(QWidget):
         try:
             from gui.dienstliches import lade_einsaetze as _lade_einsaetze
             datum_dd = self._f_datum.date().toString("dd.MM.yyyy")
-            alle_einz = [e for e in _lade_einsaetze() if e.get("datum", "") == datum_dd]
+            alle_einsaetze_heute = [e for e in _lade_einsaetze() if e.get("datum", "") == datum_dd]
 
-            # Nachtdienst: auch Einsätze des Folgetages bis 07:30 einschließen
-            if self._aktueller_typ == "nachtdienst":
-                from PySide6.QtCore import QDate as _QDate
+            if self._aktueller_typ == "tagdienst":
+                # Tagdienst-Personal: 07:00–19:00
+                _TAG_VON  = "07:00"
+                _TAG_BIS  = "19:00"
+                alle_einz = [
+                    e for e in alle_einsaetze_heute
+                    if _TAG_VON <= (e.get("uhrzeit", "") or "") < _TAG_BIS
+                ]
+            else:
+                # Nachtdienst-Personal: 19:00 (heute) bis 07:00 (Folgetag)
+                _NACHT_VON   = "19:00"
+                _NACHT_BIS   = "07:00"
+                alle_einz = [
+                    e for e in alle_einsaetze_heute
+                    if (e.get("uhrzeit", "") or "") >= _NACHT_VON
+                ]
                 folgetag = self._f_datum.date().addDays(1).toString("dd.MM.yyyy")
-                _GRENZE = "07:30"
                 for e in _lade_einsaetze():
                     if e.get("datum", "") == folgetag:
                         uhr = e.get("uhrzeit", "") or ""
-                        if uhr <= _GRENZE:
+                        if uhr < _NACHT_BIS:
                             alle_einz.append(e)
         except Exception:
             alle_einz = []
