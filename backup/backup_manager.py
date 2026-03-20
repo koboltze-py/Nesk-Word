@@ -403,10 +403,10 @@ def create_gemeinsam_backup(inkrementell: bool = True, progress_callback=None) -
         os.makedirs(_GEMEINSAM_BACKUP_LOKAL, exist_ok=True)
         pfad_lokal = os.path.join(_GEMEINSAM_BACKUP_LOKAL, zip_name)
         shutil.copy2(zip_pfad, pfad_lokal)
-        # Lokale Rotation: max. 10 ZIPs
+        # Lokale Rotation: nur das neueste ZIP behalten
         alle_lokal = sorted([f for f in os.listdir(_GEMEINSAM_BACKUP_LOKAL)
                              if f.endswith('.zip') and f.startswith('gemeinsam_')])
-        for alt in alle_lokal[:-10]:
+        for alt in alle_lokal[:-1]:
             try:
                 os.remove(os.path.join(_GEMEINSAM_BACKUP_LOKAL, alt))
             except Exception:
@@ -414,10 +414,10 @@ def create_gemeinsam_backup(inkrementell: bool = True, progress_callback=None) -
     except Exception as e:
         print(f"[Gemeinsam-Backup] Lokale Kopie fehlgeschlagen: {e}")
 
-    # OneDrive-Rotation: max. 10 ZIPs, alte Ordner-Backups auch ausräumen
+    # OneDrive-Rotation: nur das neueste ZIP behalten (altes vorheriges löschen)
     eintraege = os.listdir(_GEMEINSAM_BACKUP_DIR)
     zips = sorted([f for f in eintraege if f.endswith('.zip') and f.startswith('gemeinsam_')])
-    for alt in zips[:-10]:
+    for alt in zips[:-1]:
         try:
             os.remove(os.path.join(_GEMEINSAM_BACKUP_DIR, alt))
         except Exception:
