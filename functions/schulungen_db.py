@@ -317,16 +317,20 @@ def lade_schulungseintraege(ma_id: int) -> list[dict]:
 
 # ─── Kalender-Abfragen ────────────────────────────────────────────────────────
 def lade_ablaufende(monate: int = 3) -> list[dict]:
-    """Gibt alle Schulungseinträge zurück, die in den nächsten N Monaten ablaufen."""
+    """
+    Gibt Schulungseinträge zurück, die ablaufen oder abgelaufen sind.
+    Pro Mitarbeiter + Schulungstyp wird nur der NEUESTE Eintrag berücksichtigt.
+    Zeigt:
+      - Einträge, die in den nächsten N Monaten ablaufen
+      - Einträge, die in den letzten N Monaten abgelaufen sind
+    Sehr alte abgelaufene Einträge (> N Monate her) werden ausgeblendet.
+    """
     _init_db()
     heute    = date.today()
-    bis_wann = date(heute.year + (heute.month + monate - 1) // 12,
-                    (heute.month + monate - 1) % 12 + 1,
-                    heute.day)
-    # einfacher: +N*31 Tage für Randfälle
-    bis_wann = heute + timedelta(days=monate * 31)
+    fenster  = monate * 31  # Tage für Vor- und Rückblick
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
+        # Nur den neuesten Eintrag pro MA + Typ (MAX gueltig_bis)
         rows = conn.execute(
             """SELECT se.*, m.nachname, m.vorname, m.qualifikation
                FROM schulungseintraege se
@@ -334,6 +338,18 @@ def lade_ablaufende(monate: int = 3) -> list[dict]:
                WHERE se.laeuft_nicht_ab = 0
                  AND se.gueltig_bis IS NOT NULL
                  AND se.gueltig_bis != ''
+                 AND se.id IN (
+                     SELECT id FROM schulungseintraege se2
+                     WHERE se2.laeuft_nicht_ab = 0
+                       AND se2.mitarbeiter_id = se.mitarbeiter_id
+                       AND se2.schulungstyp   = se.schulungstyp
+                       AND se2.gueltig_bis = (
+                           SELECT MAX(se3.gueltig_bis)
+                           FROM schulungseintraege se3
+                           WHERE se3.mitarbeiter_id = se.mitarbeiter_id
+                             AND se3.schulungstyp   = se.schulungstyp
+                       )
+                 )
                ORDER BY se.gueltig_bis""",
         ).fetchall()
     result = []
@@ -343,9 +359,11 @@ def lade_ablaufende(monate: int = 3) -> list[dict]:
         if gb is None:
             continue
         diff = (gb - heute).days
-        if diff <= monate * 31:
-            d["_datum_obj"]    = gb
-            d["_tage_rest"]    = diff
+        # Nur Einträge innerhalb des Fensters (weder zu weit in der Zukunft,
+        # noch schon zu lange abgelaufen)
+        if -fenster <= diff <= fenster:
+            d["_datum_obj"]     = gb
+            d["_tage_rest"]     = diff
             d["_dringlichkeit"] = _dringlichkeit(gb, False)
             d["_name"] = f"{d.get('nachname','')} {d.get('vorname','')}".strip()
             result.append(d)
@@ -353,7 +371,9 @@ def lade_ablaufende(monate: int = 3) -> list[dict]:
 
 
 def lade_kalender_daten(jahr: int, monat: int) -> dict:
-    """Gibt dict {date: [eintrag_dict, ...]} für den angegebenen Monat zurück."""
+    """Gibt dict {date: [eintrag_dict, ...]} für den angegebenen Monat zurück.
+    Pro MA + Typ wird nur der neueste Eintrag (höchstes gueltig_bis) gezeigt.
+    """
     _init_db()
     monat_str = f"{jahr}-{monat:02d}"
     with _connect() as conn:
@@ -362,8 +382,18 @@ def lade_kalender_daten(jahr: int, monat: int) -> dict:
             """SELECT se.*, m.nachname, m.vorname, m.qualifikation
                FROM schulungseintraege se
                JOIN mitarbeiter m ON m.id = se.mitarbeiter_id
-               WHERE se.gueltig_bis LIKE ?
-                  OR se.datum_absolviert LIKE ?
+               WHERE (se.gueltig_bis LIKE ? OR se.datum_absolviert LIKE ?)
+                 AND se.id IN (
+                     SELECT id FROM schulungseintraege se2
+                     WHERE se2.mitarbeiter_id = se.mitarbeiter_id
+                       AND se2.schulungstyp   = se.schulungstyp
+                       AND se2.gueltig_bis = (
+                           SELECT MAX(se3.gueltig_bis)
+                           FROM schulungseintraege se3
+                           WHERE se3.mitarbeiter_id = se.mitarbeiter_id
+                             AND se3.schulungstyp   = se.schulungstyp
+                       )
+                 )
                ORDER BY se.gueltig_bis""",
             (f"%.{monat:02d}.{jahr}", f"%.{monat:02d}.{jahr}"),
         ).fetchall()
@@ -639,6 +669,33 @@ def _korrigiere_eh_intervall():
         pass
 
 
+def _dedup_schulungseintraege():
+    """
+    Bereinigt doppelte Schulungseinträge:
+    Pro Mitarbeiter + Schulungstyp wird nur der Eintrag mit dem höchsten
+    gueltig_bis behalten. Alle übrigen (älteren) Duplikate werden gelöscht.
+    Idempotent – kann jederzeit aufgerufen werden.
+    """
+    try:
+        with _connect() as conn:
+            # Finde alle IDs, die behalten werden sollen (MAX gueltig_bis pro MA+Typ)
+            keeper_ids = [r[0] for r in conn.execute(
+                """SELECT MAX(id)
+                   FROM schulungseintraege
+                   GROUP BY mitarbeiter_id, schulungstyp"""
+            ).fetchall()]
+            if not keeper_ids:
+                return
+            platzhalter = ",".join("?" * len(keeper_ids))
+            conn.execute(
+                f"DELETE FROM schulungseintraege WHERE id NOT IN ({platzhalter})",
+                keeper_ids,
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
 def erstimport_wenn_leer() -> "tuple[int, int] | None":
     """
     Importiert die Stammdaten-Excel automatisch, wenn die Mitarbeiter-Tabelle
@@ -647,8 +704,9 @@ def erstimport_wenn_leer() -> "tuple[int, int] | None":
     Gibt (importiert, uebersprungen) zurück oder None wenn bereits Daten vorhanden.
     """
     _init_db()
-    # EH-Intervall-Korrektur immer ausführen (idempotent)
+    # EH-Intervall-Korrektur + Dedup immer ausführen (idempotent)
     _korrigiere_eh_intervall()
+    _dedup_schulungseintraege()
     with _connect() as conn:
         anzahl = conn.execute("SELECT COUNT(*) FROM mitarbeiter").fetchone()[0]
     if anzahl > 0:
