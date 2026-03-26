@@ -203,7 +203,7 @@ class _MonatsKalender(QWidget):
             lbl.setFixedHeight(24)
             lbl.setStyleSheet(
                 f"QLabel{{background:{'#1565c0' if wt in ('Sa','So') else FIORI_BLUE};"
-                "color:#fff;border-radius:3px;font-size:11px;font-weight:bold;}}"
+                f"color:#fff;border-radius:3px;font-size:11px;font-weight:bold;}}"
             )
             header.addWidget(lbl)
         v.addLayout(header)
