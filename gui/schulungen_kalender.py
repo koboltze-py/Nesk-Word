@@ -154,19 +154,31 @@ class _TagZelle(QFrame):
             self._chips_layout.addWidget(mehr)
 
     def _chip_label(self, eintrag: dict) -> QLabel:
-        dring = eintrag.get("_dringlichkeit", "")
-        bg, fg = _chip_farbe(dring)
+        dring      = eintrag.get("_dringlichkeit", "")
+        vorwarnung = eintrag.get("_vorwarnung", False)
+        bg, fg     = _chip_farbe(dring)
         typ  = SCHULUNGSTYP_KURZ.get(eintrag.get("schulungstyp",""), eintrag.get("schulungstyp","")[:6])
         name = eintrag.get("_name", "?")
-        text = f"  {name[:14]} · {typ}"
-        lbl  = QLabel(text)
-        lbl.setStyleSheet(
-            f"QLabel{{background:{bg};color:{fg};border-radius:3px;"
-            f"font-size:9px;padding:1px 2px;}}"
-        )
+        if vorwarnung:
+            # Ablaufdatum anzeigen, damit klar ist wann es wirklich abläuft
+            gb_str = eintrag.get("gueltig_bis", "?")
+            # nur Tag.Monat (ohne Jahr) für kompakte Anzeige
+            datum_kurz = gb_str[:5] if len(gb_str) >= 5 else gb_str
+            text = f"  ⚠ {name[:12]} · {typ} ({datum_kurz})"
+        else:
+            text = f"  {name[:14]} · {typ}"
+        lbl = QLabel(text)
+        # Vorwarnungen etwas transparenter (gestrichelt wäre ideal, aber QLabel-Grenzen)
+        stil = (f"QLabel{{background:{bg};color:{fg};border-radius:3px;"
+                f"font-size:9px;padding:1px 2px;"
+                + ("border:1px dashed " + fg + ";" if vorwarnung else "")
+                + "}}")
+        lbl.setStyleSheet(stil)
+        gb_anzeige = eintrag.get("gueltig_bis", "?")
         lbl.setToolTip(
+            f"{'⚠ Vorwarnung – läuft demnächst ab!' + chr(10) if vorwarnung else ''}"
             f"{eintrag.get('_name')} – {SCHULUNGSTYPEN_CFG_K.get(eintrag.get('schulungstyp',''),{}).get('anzeige','')}\n"
-            f"Gültig bis: {eintrag.get('gueltig_bis','?')}"
+            f"Gültig bis: {gb_anzeige}"
         )
         return lbl
 

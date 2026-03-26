@@ -179,12 +179,17 @@ def _berechne_status(gueltig_bis: "date | None", laeuft_nicht_ab: bool) -> str:
     return "gültig"
 
 
-def _dringlichkeit(gueltig_bis: "date | None", laeuft_nicht_ab: bool) -> str:
-    """Gibt 'rot', 'orange', 'gelb', 'ok', 'abgelaufen' oder '' zurück."""
+def _dringlichkeit(gueltig_bis: "date | None", laeuft_nicht_ab: bool,
+                   referenz: "date | None" = None) -> str:
+    """Gibt 'rot', 'orange', 'gelb', 'ok', 'abgelaufen' oder '' zurück.
+    referenz: Vergleichsdatum (Standard: heute). Im Kalender wird der
+    erste Tag des angezeigten Monats übergeben, damit die Farbe zum
+    dargestellten Zeitraum passt und nicht immer von heute aus gerechnet wird.
+    """
     if laeuft_nicht_ab or gueltig_bis is None:
         return ""
-    heute = date.today()
-    diff  = (gueltig_bis - heute).days
+    basis = referenz if referenz is not None else date.today()
+    diff  = (gueltig_bis - basis).days
     if diff < 0:
         return "abgelaufen"
     if diff <= 31:
@@ -373,16 +378,37 @@ def lade_ablaufende(monate: int = 3) -> list[dict]:
 def lade_kalender_daten(jahr: int, monat: int) -> dict:
     """Gibt dict {date: [eintrag_dict, ...]} für den angegebenen Monat zurück.
     Pro MA + Typ wird nur der neueste Eintrag (höchstes gueltig_bis) gezeigt.
+
+    Vorwarnung: Einträge die in den nächsten 1-3 Kalendermonaten ablaufen
+    werden ebenfalls geladen und auf dem letzten Tag des angezeigten Monats
+    eingeblendet (mit _vorwarnung=True), damit rechtzeitig gewarnt wird.
     """
+    import calendar as _cal
+
     _init_db()
-    monat_str = f"{jahr}-{monat:02d}"
-    with _connect() as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """SELECT se.*, m.nachname, m.vorname, m.qualifikation
+
+    # Aktuelle Monat + nächste 3 Monate für Vorwarnungen berechnen
+    vorwarn_monate = []   # [(jahr, monat), ...]
+    m, j = monat, jahr
+    for _ in range(3):
+        m += 1
+        if m > 12:
+            m = 1
+            j += 1
+        vorwarn_monate.append((j, m))
+
+    # LIKE-Muster für die zukünftigen Monate (nur gueltig_bis, keine absolviert)
+    vorwarn_likes = [f"%.{m:02d}.{j}" for j, m in vorwarn_monate]
+
+    # SQL: aktueller Monat (gueltig_bis ODER datum_absolviert) + Vorwarnungen (nur gueltig_bis)
+    vorwarn_clause = " OR ".join([f"se.gueltig_bis LIKE ?" for _ in vorwarn_likes])
+    sql = f"""SELECT se.*, m.nachname, m.vorname, m.qualifikation
                FROM schulungseintraege se
                JOIN mitarbeiter m ON m.id = se.mitarbeiter_id
-               WHERE (se.gueltig_bis LIKE ? OR se.datum_absolviert LIKE ?)
+               WHERE (
+                   (se.gueltig_bis LIKE ? OR se.datum_absolviert LIKE ?)
+                   OR ({vorwarn_clause})
+               )
                  AND se.id IN (
                      SELECT id FROM schulungseintraege se2
                      WHERE se2.mitarbeiter_id = se.mitarbeiter_id
@@ -394,19 +420,45 @@ def lade_kalender_daten(jahr: int, monat: int) -> dict:
                              AND se3.schulungstyp   = se.schulungstyp
                        )
                  )
-               ORDER BY se.gueltig_bis""",
-            (f"%.{monat:02d}.{jahr}", f"%.{monat:02d}.{jahr}"),
-        ).fetchall()
+               ORDER BY se.gueltig_bis"""
+    params = [f"%.{monat:02d}.{jahr}", f"%.{monat:02d}.{jahr}"] + vorwarn_likes
+
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
+
+    # Referenzdaten: erster und letzter Tag des angezeigten Monats
+    letzter_tag_nr   = _cal.monthrange(jahr, monat)[1]
+    referenz_erster  = date(jahr, monat, 1)
+    referenz_letzter = date(jahr, monat, letzter_tag_nr)
+    letzter_tag      = date(jahr, monat, letzter_tag_nr)
+
     aus = {}
-    heute = date.today()
     for r in rows:
         d = dict(r)
-        gb = _parse_datum(d.get("gueltig_bis"))
+        gb              = _parse_datum(d.get("gueltig_bis"))
+        laeuft_nicht_ab = bool(d.get("laeuft_nicht_ab"))
+        d["_name"]      = f"{d.get('nachname','')} {d.get('vorname','')}".strip()
+
         if gb and gb.year == jahr and gb.month == monat:
+            # Normaler Eintrag: läuft in diesem Monat ab
+            # Farbe relativ zum Monatsersten (bereits korrigiert)
             d["_datum_obj"]     = gb
-            d["_dringlichkeit"] = _dringlichkeit(gb, bool(d.get("laeuft_nicht_ab")))
-            d["_name"] = f"{d.get('nachname','')} {d.get('vorname','')}".strip()
+            d["_dringlichkeit"] = _dringlichkeit(gb, laeuft_nicht_ab, referenz=referenz_erster)
+            d["_vorwarnung"]    = False
             aus.setdefault(gb, []).append(d)
+
+        elif gb and not laeuft_nicht_ab:
+            # Mögliche Vorwarnung: läuft in M+1, M+2 oder M+3 ab
+            # Farbe relativ zum letzten Tag des Monats (zeigt wie dringend
+            # es am Monatsende war – erzeugt 3 Monate Vorwarnzeit)
+            dring = _dringlichkeit(gb, laeuft_nicht_ab, referenz=referenz_letzter)
+            if dring in ("rot", "orange", "gelb"):
+                d["_datum_obj"]     = gb
+                d["_dringlichkeit"] = dring
+                d["_vorwarnung"]    = True
+                aus.setdefault(letzter_tag, []).append(d)
+
     return aus
 
 
