@@ -145,7 +145,7 @@ def _zeitgruppen_para(cell, gruppen: dict, size=9.5):
         ind.set(qn("w:left"), "2550"); ind.set(qn("w:hanging"), "2550")
         pPr.append(ind)
         p.paragraph_format.space_before = Pt(0)
-        p.paragraph_format.space_after  = Pt(2)  # Zeilenabstand zwischen Zeitgruppen
+        p.paragraph_format.space_after  = Pt(1)  # Zeilenabstand zwischen Zeitgruppen
         rz = p.add_run(f"{zeit}\t"); rz.font.size = Pt(size)
         rn = p.add_run(" / ".join(namen)); rn.font.size = Pt(size)
 
@@ -167,7 +167,7 @@ def erstelle_demo():
     doc = Document()
     for sec in doc.sections:
         sec.page_width    = Cm(21.0); sec.page_height  = Cm(29.7)
-        sec.top_margin    = Cm(0.8);  sec.bottom_margin = Cm(0.8)
+        sec.top_margin    = Cm(0.5);  sec.bottom_margin = Cm(0.5)
         sec.left_margin   = Cm(0.5);  sec.right_margin  = Cm(0.5)
 
     # Kopfzeile (Word-nativer Header – erscheint auf ganzer Seite)
@@ -206,7 +206,7 @@ def erstelle_demo():
 
     # Zeile exakt auf Seitenhöhe fixieren → kein Seitenumbruch möglich
     # Nutzbare Höhe = A4 - oben - unten - Header (~2cm)
-    PAGE_H_CM = 29.7 - 0.8 - 0.8 - 2.0   # ~26.1 cm
+    PAGE_H_CM = 29.7 - 0.5 - 0.5 - 2.0   # ~26.7 cm
     tr = main.rows[0]._tr
     trPr = tr.get_or_add_trPr()
     trH = OxmlElement("w:trHeight")
@@ -219,17 +219,17 @@ def erstelle_demo():
     # ══════════════════════════════════════════════════════════════════════════
 
     # Org-Info (kompakter wegen schmaler Spalte)
-    _para(lc, "Deutsches Rotes Kreuz", bold=True, size=9, fg="1A3460",
-          align="center", sb=5)
-    _para(lc, "Kreisverband Köln e.V.", size=7.5, fg="1A3460", align="center")
-    _para(lc, STATION, size=6.5, fg="666666", align="center")
-    _para(lc, TEL, bold=True, size=7.5, fg="1A3460", align="center", sa=2)
+    _para(lc, "Deutsches Rotes Kreuz", bold=True, size=8, fg="1A3460",
+          align="center", sb=2)
+    _para(lc, "Kreisverband Köln e.V.", size=7, fg="1A3460", align="center")
+    _para(lc, STATION, size=6, fg="666666", align="center")
+    _para(lc, TEL, bold=True, size=7, fg="1A3460", align="center", sa=1)
 
     _trenn(lc, "1565a8")
 
     # Datum
-    _para(lc, f"Datum:  {DATUM}", bold=True, size=11, fg="1A3460",
-          align="center", sb=4, sa=4)
+    _para(lc, f"Datum:  {DATUM}", bold=True, size=9, fg="1A3460",
+          align="center", sb=2, sa=2)
 
     _trenn(lc, "1565a8")
 
@@ -243,29 +243,29 @@ def erstelle_demo():
     for lbl, val, lbl_fg, val_fg in kz:
         p = lc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(4)
-        p.paragraph_format.space_after  = Pt(1)
-        r1 = p.add_run(f"{lbl}\n"); r1.font.size = Pt(7); r1.font.color.rgb = _rgb(lbl_fg)
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after  = Pt(0)
+        r1 = p.add_run(f"{lbl}\n"); r1.font.size = Pt(6.5); r1.font.color.rgb = _rgb(lbl_fg)
         r2 = p.add_run(val)
-        r2.bold = True; r2.font.size = Pt(14); r2.font.color.rgb = _rgb(val_fg)
+        r2.bold = True; r2.font.size = Pt(11); r2.font.color.rgb = _rgb(val_fg)
 
     # Schichtleiter Tag + Nacht im Dashboard
     _trenn(lc, "1565a8", oben=True)
-    _para(lc, "SCHICHTLEITER", bold=True, size=7, fg="1565a8", align="center", sb=2)
-    _para(lc, f"Tag:   {SCHICHTL_TAG[0]}",   size=7.5, fg="1A3460", align="center", sb=1)
-    _para(lc, SCHICHTL_TAG[1],               size=7,   fg="2A4A7F", align="center", sa=1)
-    _para(lc, f"Nacht: {SCHICHTL_NACHT[0]}", size=7.5, fg="1A3460", align="center", sb=1)
-    _para(lc, SCHICHTL_NACHT[1],                size=7,   fg="2A4A7F", align="center", sa=2)
+    _para(lc, "SCHICHTLEITER", bold=True, size=6.5, fg="1565a8", align="center", sb=1)
+    _para(lc, f"Tag:   {SCHICHTL_TAG[0]}",   size=7, fg="1A3460", align="center", sb=0)
+    _para(lc, SCHICHTL_TAG[1],               size=6.5, fg="2A4A7F", align="center", sa=0)
+    _para(lc, f"Nacht: {SCHICHTL_NACHT[0]}", size=7, fg="1A3460", align="center", sb=0)
+    _para(lc, SCHICHTL_NACHT[1],                size=6.5, fg="2A4A7F", align="center", sa=1)
 
     _trenn(lc, "1565a8", oben=True)
 
     # BULMOR – FAHRZEUGSTATUS Header
     p_bul_hdr = lc.add_paragraph()
     p_bul_hdr.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_bul_hdr.paragraph_format.space_before = Pt(4)
-    p_bul_hdr.paragraph_format.space_after  = Pt(3)
+    p_bul_hdr.paragraph_format.space_before = Pt(2)
+    p_bul_hdr.paragraph_format.space_after  = Pt(1)
     rb = p_bul_hdr.add_run("BULMOR – FAHRZEUGSTATUS")
-    rb.bold = True; rb.font.size = Pt(7.5); rb.font.color.rgb = _rgb("1A3460")
+    rb.bold = True; rb.font.size = Pt(7); rb.font.color.rgb = _rgb("1A3460")
 
     # B1–B5 als Tabelle
     btbl = lc.add_table(rows=2, cols=5); btbl.style = "Table Grid"
@@ -278,24 +278,24 @@ def erstelle_demo():
         _set_bg(ct, bg_top); _set_bg(cb, bg_bot)
         # Obere Zeile: Kreis + B-Nummer
         pt = ct.paragraphs[0]; pt.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        pt.paragraph_format.space_before = Pt(3); pt.paragraph_format.space_after = Pt(1)
+        pt.paragraph_format.space_before = Pt(1); pt.paragraph_format.space_after = Pt(0)
         rt = pt.add_run(f"●\nB{i+1}")
-        rt.bold = True; rt.font.size = Pt(7.5); rt.font.color.rgb = _rgb(WEISS)
+        rt.bold = True; rt.font.size = Pt(7); rt.font.color.rgb = _rgb(WEISS)
         # Untere Zeile: Status-Text
         pb = cb.paragraphs[0]; pb.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        pb.paragraph_format.space_before = Pt(1); pb.paragraph_format.space_after = Pt(2)
+        pb.paragraph_format.space_before = Pt(0); pb.paragraph_format.space_after = Pt(1)
         status = "Dienst" if aktiv else "Aus"
         rb2 = pb.add_run(status)
-        rb2.font.size = Pt(7.5)
+        rb2.font.size = Pt(7)
         rb2.font.color.rgb = _rgb(FC_HEX if aktiv else "CC3333")
 
     # Gesamt-Box – kein farbiger Hintergrund
     gbox = lc.add_table(rows=1, cols=1); gbox.style = "Table Grid"
     gc   = gbox.cell(0, 0); _no_border(gc); gc.width = L_W
     pg   = gc.paragraphs[0]; pg.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    pg.paragraph_format.space_before = Pt(3); pg.paragraph_format.space_after = Pt(3)
+    pg.paragraph_format.space_before = Pt(2); pg.paragraph_format.space_after = Pt(2)
     rg   = pg.add_run(f"Gesamt: {BUL_ANZ}/5  ◇  {LBL_BUL}")
-    rg.bold = True; rg.font.size = Pt(8); rg.font.color.rgb = _rgb("1A3460")
+    rg.bold = True; rg.font.size = Pt(7.5); rg.font.color.rgb = _rgb("1A3460")
 
     # ══════════════════════════════════════════════════════════════════════════
     # RECHTE SPALTE – klassische Stärkemeldung (StaerkemeldungExport-Stil)
@@ -303,23 +303,23 @@ def erstelle_demo():
 
     # Sub-Header (kein farbiger Block)
     p_hdr = rc.add_paragraph()
-    p_hdr.paragraph_format.space_before = Pt(2)
-    p_hdr.paragraph_format.space_after  = Pt(2)
+    p_hdr.paragraph_format.space_before = Pt(1)
+    p_hdr.paragraph_format.space_after  = Pt(1)
     rh = p_hdr.add_run(f"STÄRKEMELDUNG  ·  {DATUM}")
-    rh.bold = True; rh.font.size = Pt(11); rh.font.color.rgb = _rgb("1A3460")
+    rh.bold = True; rh.font.size = Pt(10); rh.font.color.rgb = _rgb("1A3460")
 
     # Zeitraum-Zeile
     p_zr = rc.add_paragraph()
-    p_zr.paragraph_format.space_before = Pt(1)
-    p_zr.paragraph_format.space_after  = Pt(2)
+    p_zr.paragraph_format.space_before = Pt(0)
+    p_zr.paragraph_format.space_after  = Pt(1)
     rz   = p_zr.add_run(f"Zeitraum:\t{DATUM} bis {DATUM}")
-    rz.font.size = Pt(10); rz.font.bold = True
+    rz.font.size = Pt(9); rz.font.bold = True
 
     # ── Schichtleiter ─────────────────────────────────────────────────────────
     ph_sl = rc.add_paragraph()
     ph_sl.paragraph_format.space_before = Pt(1)
-    ph_sl.paragraph_format.space_after  = Pt(1)
-    rh_sl = ph_sl.add_run("Schichtleiter"); rh_sl.font.bold = True; rh_sl.font.size = Pt(10)
+    ph_sl.paragraph_format.space_after  = Pt(0)
+    rh_sl = ph_sl.add_run("Schichtleiter"); rh_sl.font.bold = True; rh_sl.font.size = Pt(9)
 
     for prefix, (name, zeit) in [("Tag:  ", SCHICHTL_TAG), ("Nacht:", SCHICHTL_NACHT)]:
         p_sl = rc.add_paragraph()
@@ -330,36 +330,36 @@ def erstelle_demo():
         ind = OxmlElement("w:ind"); ind.set(qn("w:left"), "2550"); ind.set(qn("w:hanging"), "2550")
         pPr.append(ind)
         p_sl.paragraph_format.space_before = Pt(0); p_sl.paragraph_format.space_after = Pt(0)
-        r_pf = p_sl.add_run(f"{prefix}\t"); r_pf.font.size = Pt(10)
-        r_nm = p_sl.add_run(f"{name}  ({zeit})"); r_nm.font.size = Pt(10); r_nm.bold = True
+        r_pf = p_sl.add_run(f"{prefix}\t"); r_pf.font.size = Pt(9)
+        r_nm = p_sl.add_run(f"{name}  ({zeit})"); r_nm.font.size = Pt(9); r_nm.bold = True
 
-    rc.add_paragraph().paragraph_format.space_after = Pt(1)
+    rc.add_paragraph().paragraph_format.space_after = Pt(0)
 
     # ── Disposition ───────────────────────────────────────────────────────────
     ph = rc.add_paragraph()
     ph.paragraph_format.space_before = Pt(1)
     ph.paragraph_format.space_after  = Pt(0)
-    rh = ph.add_run("Disposition"); rh.font.bold = True; rh.font.size = Pt(10)
+    rh = ph.add_run("Disposition"); rh.font.bold = True; rh.font.size = Pt(9)
 
     all_dispo = DISPO_TAG + DISPO_NACHT
-    _zeitgruppen_para(rc, _grup(all_dispo), size=9)
-    rc.add_paragraph().paragraph_format.space_after = Pt(1)
+    _zeitgruppen_para(rc, _grup(all_dispo), size=8.5)
+    rc.add_paragraph().paragraph_format.space_after = Pt(0)
 
     # ── Behindertenbetreuer ───────────────────────────────────────────────────
     ph2 = rc.add_paragraph()
     ph2.paragraph_format.space_before = Pt(1)
     ph2.paragraph_format.space_after  = Pt(0)
-    rh2 = ph2.add_run("Behindertenbetreuer"); rh2.font.bold = True; rh2.font.size = Pt(10)
+    rh2 = ph2.add_run("Behindertenbetreuer"); rh2.font.bold = True; rh2.font.size = Pt(9)
 
     all_bet = BETREUER_TAG + BETREUER_NACHT
-    _zeitgruppen_para(rc, _grup(all_bet), size=9)
-    rc.add_paragraph().paragraph_format.space_after = Pt(1)
+    _zeitgruppen_para(rc, _grup(all_bet), size=8.5)
+    rc.add_paragraph().paragraph_format.space_after = Pt(0)
 
     # ── PAX-Zahl (jetzt hier, kein separater Block mehr am Ende) ──────
     ph_pax = rc.add_paragraph()
     ph_pax.paragraph_format.space_before = Pt(1)
     ph_pax.paragraph_format.space_after  = Pt(0)
-    rh_pax = ph_pax.add_run("PAX gestern"); rh_pax.font.bold = True; rh_pax.font.size = Pt(10)
+    rh_pax = ph_pax.add_run("PAX gestern"); rh_pax.font.bold = True; rh_pax.font.size = Pt(9)
     p_paxz = rc.add_paragraph()
     pPr_p  = p_paxz._p.get_or_add_pPr()
     tabs_p = OxmlElement("w:tabs"); tab_p = OxmlElement("w:tab")
@@ -368,12 +368,12 @@ def erstelle_demo():
     ind_p  = OxmlElement("w:ind"); ind_p.set(qn("w:left"), "2550"); ind_p.set(qn("w:hanging"), "2550")
     pPr_p.append(ind_p)
     p_paxz.paragraph_format.space_before = Pt(0); p_paxz.paragraph_format.space_after = Pt(0)
-    rp1 = p_paxz.add_run(f"{DATUM}\t"); rp1.font.size = Pt(10)
+    rp1 = p_paxz.add_run(f"{DATUM}\t"); rp1.font.size = Pt(9)
     rp2 = p_paxz.add_run(f"{PAX_EINZEL:,}".replace(",", ".") + " Passagiere")
-    rp2.font.size = Pt(10); rp2.bold = True
+    rp2.font.size = Pt(9); rp2.bold = True
 
     # ── Speichern ─────────────────────────────────────────────────────────────
-    out = ZIEL / f"DEMO_Dashboard_v3_{DATUM.replace('.','')}.docx"
+    out = ZIEL / f"DEMO_Dashboard_v4_{DATUM.replace('.','')}.docx"
     doc.save(str(out))
     print(f"[OK] Gespeichert: {out}")
     return str(out)
