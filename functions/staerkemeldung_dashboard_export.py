@@ -252,10 +252,10 @@ class StaerkemeldungDashboardExport:
 
     def _build_links(self,lc):
         sl_tag=self._find_sl(False); sl_nacht=self._find_sl(True)
-        _para(lc,"Deutsches Rotes Kreuz",bold=True,size=8.5,fg="000000",align="center",sb=2)
-        _para(lc,"Kreisverband Koeln e.V.",size=7,fg="000000",align="center")
-        _para(lc,"Erste-Hilfe-Station - Flughafen Koeln/Bonn",size=6,fg="000000",align="center")
-        _para(lc,TEL,bold=True,size=7,fg="000000",align="center",sa=1)
+        _para(lc,"Deutsches Rotes Kreuz",bold=True,size=10.5,fg="000000",align="center",sb=2)
+        _para(lc,"Kreisverband Koeln e.V.",size=9,fg="000000",align="center")
+        _para(lc,"Erste-Hilfe-Station - Flughafen Koeln/Bonn",size=8,fg="000000",align="center")
+        _para(lc,TEL,bold=True,size=9,fg="000000",align="center",sa=1)
         _trenn(lc,AZ)
         try:
             from database.pax_db import lade_jahres_pax,lade_tages_pax,lade_jahres_einsaetze,lade_tages_einsaetze
@@ -272,9 +272,9 @@ class StaerkemeldungDashboardExport:
         ]:
             p=lc.add_paragraph(); p.alignment=WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(0)
-            r1=p.add_run(f"{lbl}\n"); r1.font.size=Pt(6.5); r1.font.color.rgb=_rgb("000000")
+            r1=p.add_run(f"{lbl}\n"); r1.font.size=Pt(8.5); r1.font.color.rgb=_rgb("000000")
             r1.bold=True; r1.font.name="Aptos"
-            r2=p.add_run(val); r2.bold=False; r2.font.size=Pt(11); r2.font.color.rgb=_rgb("000000")
+            r2=p.add_run(val); r2.bold=False; r2.font.size=Pt(13); r2.font.color.rgb=_rgb("000000")
             r2.font.name="Aptos"
         _trenn(lc,AZ)
         for lbl,val in [
@@ -283,33 +283,33 @@ class StaerkemeldungDashboardExport:
         ]:
             p=lc.add_paragraph(); p.alignment=WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(0)
-            r1=p.add_run(f"{lbl}\n"); r1.font.size=Pt(6.5); r1.font.color.rgb=_rgb("000000")
+            r1=p.add_run(f"{lbl}\n"); r1.font.size=Pt(8.5); r1.font.color.rgb=_rgb("000000")
             r1.bold=True; r1.font.name="Aptos"
-            r2=p.add_run(val); r2.bold=False; r2.font.size=Pt(11); r2.font.color.rgb=_rgb("000000")
+            r2=p.add_run(val); r2.bold=False; r2.font.size=Pt(13); r2.font.color.rgb=_rgb("000000")
             r2.font.name="Aptos"
         _trenn(lc,AZ,oben=True)
-        _para(lc,"SCHICHTLEITER",bold=True,size=6.5,fg="000000",align="center",sb=1)
+        _para(lc,"SCHICHTLEITER",bold=True,size=8.5,fg="000000",align="center",sb=1)
         for label,sl in [("Tag: ",sl_tag),("Nacht:",sl_nacht)]:
             if sl:
-                _para(lc,f"{label}  {sl[0]}",size=7.5,fg="000000",align="center",sb=0)
-                _para(lc,sl[1],size=6.5,fg="000000",align="center",sa=0)
+                _para(lc,f"{label}  {sl[0]}",size=9.5,fg="000000",align="center",sb=0)
+                _para(lc,sl[1],size=8.5,fg="000000",align="center",sa=0)
         if not sl_tag and not sl_nacht:
-            _para(lc,"-",size=8,fg="000000",align="center")
+            _para(lc,"-",size=10,fg="000000",align="center")
         _trenn(lc,AZ,oben=True)
         fc_hex,lbl_bul=_bul_farben(self._bul_aktiv)
-        _para(lc,"BULMOR - FAHRZEUGSTATUS",bold=True,size=6.5,fg="000000",align="center",sb=1)
+        _para(lc,"BULMOR - FAHRZEUGSTATUS",bold=True,size=8.5,fg="000000",align="center",sb=1)
         bul_tbl=lc.add_table(rows=1,cols=self.BULMOR_GESAMT); bul_tbl.style="Table Grid"
         for i in range(self.BULMOR_GESAMT):
             c=bul_tbl.cell(0,i); _set_bg(c,fc_hex if i<self._bul_aktiv else "444444")
             p=c.add_paragraph(f"B{i+1}"); p.alignment=WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_before=Pt(1); p.paragraph_format.space_after=Pt(1)
-            p.runs[0].font.size=Pt(7); p.runs[0].font.color.rgb=_rgb(WEISS)
+            p.runs[0].font.size=Pt(9); p.runs[0].font.color.rgb=_rgb(WEISS)
             p.runs[0].bold=True; p.runs[0].font.name="Aptos"
         ges=lc.add_paragraph(); ges.alignment=WD_ALIGN_PARAGRAPH.CENTER
         ges.paragraph_format.space_before=Pt(1); ges.paragraph_format.space_after=Pt(0)
         r1=ges.add_run(f"{self._bul_aktiv}/{self.BULMOR_GESAMT}  ")
-        r1.bold=True; r1.font.size=Pt(11); r1.font.color.rgb=_rgb(fc_hex); r1.font.name="Aptos"
-        r2=ges.add_run(lbl_bul); r2.font.size=Pt(8); r2.font.color.rgb=_rgb(fc_hex); r2.font.name="Aptos"
+        r1.bold=True; r1.font.size=Pt(13); r1.font.color.rgb=_rgb(fc_hex); r1.font.name="Aptos"
+        r2=ges.add_run(lbl_bul); r2.font.size=Pt(10); r2.font.color.rgb=_rgb(fc_hex); r2.font.name="Aptos"
 
     def _build_rechts(self,rc):
         datum_str=self._von.strftime("%d.%m.%Y"); bis_str=self._bis.strftime("%d.%m.%Y")
